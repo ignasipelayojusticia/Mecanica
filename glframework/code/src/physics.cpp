@@ -127,6 +127,20 @@ glm::vec3 crossPorduct(const glm::vec3& A, const glm::vec3& B)
 	return {((B.z * A.y) - (B.y * A.z)), ((A.z * B.x) - (A.x * B.z)), ((A.x * B.y) - (B.x * A.y))};
 }
 
+float vectorModule(const glm::vec3& A)
+{
+	return (glm::sqrt((glm::pow(A.x, 2)) + (glm::pow(A.y, 2)) + (glm::pow(A.z, 2))));
+}
+
+glm::vec3 closestPoint(const glm::vec3& p, const glm::vec3& linePoint, const glm::vec3& lineVector)
+{
+	glm::vec3 vectorLPP = makeVector(p, linePoint);
+
+	glm::vec3 proj = (multVector(lineVector, vectorLPP) / glm::pow(vectorModule(lineVector), 2)) * lineVector;
+
+	return linePoint + proj;
+}
+
 //FORCE ACTUATORS
 struct ForceActuator
 {
@@ -264,6 +278,18 @@ struct CapsuleCol : Collider
 	{
 		if (!Capsule::collider)
 			return false;
+
+		glm::vec3 p = closestPoint(nextPos, Capsule::positionA, makeVector(Capsule::positionB, Capsule::positionA));
+
+		p.x = glm::clamp(p.x, glm::min(Capsule::positionA.x, Capsule::positionB.x), glm::max(Capsule::positionA.x, Capsule::positionB.x));
+		p.y = glm::clamp(p.y, glm::min(Capsule::positionA.y, Capsule::positionB.y), glm::max(Capsule::positionA.y, Capsule::positionB.y));
+		p.z = glm::clamp(p.z, glm::min(Capsule::positionA.z, Capsule::positionB.z), glm::max(Capsule::positionA.z, Capsule::positionB.z));
+
+		if (distance(nextPos, p) < Capsule::radius)
+		{
+			std::cout << "colisiona" << std::endl;
+			return true;
+		}
 
 		return false;
 	}
@@ -495,7 +521,7 @@ void PhysicsInit()
 {
 	srand(time(NULL));
 
-	ps = new ParticleSystem(5000, 0.05f, particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
+	ps = new ParticleSystem(10, 0.05f, particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
 
 	forceActuators.push_back(gravity);
 	forceActuators.push_back(positionalGravityForce);
