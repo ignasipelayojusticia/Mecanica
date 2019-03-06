@@ -6,18 +6,29 @@
 #include <time.h>
 #include <iostream>
 
-double G = 0.00000000006674F;
-
-glm::vec3 boxCoordinatesInit = { -5, 5, -5 };
-glm::vec3 boxCoordinatesFinal = { 5, 10, 5 };
-
-float dragPrecision = 0.01f;
-
-float elasticCoefficient = 0.0f;
+//Physics 
+double G = 0.6674f;
+float elasticCoefficient = 1.0f;
 float frictionCoefficient = 0.0f;
-
 bool useGravity;
 
+//Box coordinates
+glm::vec3 boxCoordinatesInit{ -5, 0, -5 };
+glm::vec3 boxCoordinatesFinal = { 5, 10, 5 };
+
+//Particles spawn down position
+glm::vec3 particlesSpawnInit = { -5, 5, -5 };
+
+//Particles init speed range values
+glm::vec2 xSpeed = {-0.3, 0.3};
+glm::vec2 ySpeed = { -0.3, 0.3 };
+glm::vec2 zSpeed = { -0.3, 0.3 };
+
+//GUI 
+float dragPrecision = 0.01f;
+
+
+//NAMESPACES
 namespace Box {
 	void drawCube();
 }
@@ -38,9 +49,7 @@ namespace Sphere {
 namespace Capsule {
 	extern void updateCapsule(glm::vec3 posA, glm::vec3 posB, float radius = 1.f);
 	extern void drawCapsule();
-
 	bool collider;
-	
 	glm::vec3 positionA{ -3.f, 2.f, -2.f };
 	glm::vec3 positionB{ -4.f, 2.f, 2.f };
 	extern float radius;
@@ -68,7 +77,7 @@ namespace Cube {
 	extern void drawCube();
 }
 
-//Useful Functions
+//ADDITIONAL FUNCTIONS
 //Function that generates a random float between two numbers
 float RandomFloat(float a, float b)
 {
@@ -84,15 +93,41 @@ float distance(const glm::vec3& A, const glm::vec3& B)
 	return glm::sqrt(glm::pow((B.x - A.x), 2) + glm::pow((B.y - A.y), 2) + glm::pow((B.z - A.z),2));
 }
 
+//Function that returns the distance between a plane and a point
+float distancePlanePoint(const glm::vec3& n, const float& d, const glm::vec3& p)
+{
+	float up = n.x * p.x + n.y * p.y + n.z * p.z + d;
+	float down = glm::sqrt(pow(n.x,2) + pow(n.y,2) + pow(n.z,2));
+	return up / down;
+}
+
 //Function that returns the normalized vector between two points
-glm::vec3 normVector(const glm::vec3& A, const glm::vec3& B)
+glm::vec3 normalizeVector(const glm::vec3& A, const glm::vec3& B)
 {
 	glm::vec3 v { (B.x - A.x), (B.y - A.y), (B.z - A.z) };
 	v = glm::normalize(v);
 	return v;
 }
 
-//Force Actuators
+//Function that returns the dotProduct between two vectors
+float multVector(const glm::vec3& A, const glm::vec3& B)
+{
+	return (B.x * A.x) + (B.y * A.y) + (B.z * A.z);
+}
+
+//Function that returns the vector between two points
+glm::vec3 makeVector(const glm::vec3& A, const glm::vec3& B)
+{
+	return {(B.x - A.x), (B.y - A.y), (B.z - A.z)};
+}
+
+//Function that returns the crossProduct between two vectors
+glm::vec3 crossPorduct(const glm::vec3& A, const glm::vec3& B)
+{
+	return {((B.z * A.y) - (B.y * A.z)), ((A.z * B.x) - (A.x * B.z)), ((A.x * B.y) - (B.x * A.y))};
+}
+
+//FORCE ACTUATORS
 struct ForceActuator
 {
 	virtual glm::vec3 computeForce(float mass, const glm::vec3& position) = 0;
@@ -119,9 +154,9 @@ struct PositionalGravityForce : ForceActuator
 
 		float d = distance(position, spherePos);
 
-		float forceMagnitude = (mass * sphereMass) / (d * d);
+		float forceMagnitude = G * (mass * sphereMass) / (d * d);
 
-		glm::vec3 v = normVector(position, spherePos);
+		glm::vec3 v = normalizeVector(position, spherePos);
 
 		return v * forceMagnitude;
 	}
@@ -132,49 +167,68 @@ glm::vec3 computeForces(float mass, const glm::vec3& position, const std::vector
 	glm::vec3 totalForce{ 0,0,0 };
 
 	for (int i = 0; i < forceActs.size(); i++)
-	{
 		totalForce += forceActs[i]->computeForce(mass, position);
-	}
 
 	return totalForce;
 }
 
-//Collisions
+//COLLIDERS
 struct Collider
 {
 	glm::vec3 normal; 
 	float d;
 
+	glm::vec3 previousPosition;
+	glm::vec3 newPosition;
+
 	virtual bool checkCollision(const glm::vec3& prevPos, const glm::vec3& nextPos) = 0;
 	virtual void getPlane(glm::vec3& normal, float& d) = 0;
 	void computeCollision(const glm::vec3& oldPos, const glm::vec3& oldVel, glm::vec3& newPos, glm::vec3& newVel)
 	{
+		previousPosition = oldPos;
+		newPosition = newPos;
+
 		getPlane(normal, d);
-		std::cout << normal.x << std::endl;
-		std::cout << normal.y << std::endl;
-		std::cout << normal.z << std::endl;
-		std::cout << d << std::endl;
+
+		glm::vec3 finalPos = newPos - (1 + elasticCoefficient) * (multVector(normal, newPos) + d) * normal;
+		newPos = finalPos;
+
+		glm::vec3 finalVel = newVel - (1 + elasticCoefficient) * (multVector(normal, newVel)) * normal;
+
+		//Tenemos que calcular la fuerza normal contra la superfície que colisiona (si está en plano la fuerza normal == masa * g)
+
+		newVel = finalVel;
 	}
 };
 
 struct PlaneCol : Collider
 {
+	glm::vec3 p1, p2, p3, p4;
+
+	PlaneCol(glm::vec3 _p1, glm::vec3 _p2, glm::vec3 _p3, glm::vec3 _p4) : p1(_p1), p2(_p2), p3(_p3), p4(_p4)
+	{
+		glm::vec3 v1 = makeVector(p1, p4);
+		glm::vec3 v2 = makeVector(p2, p3);
+
+		normal = glm::normalize(crossPorduct(v1, v2));
+		d = -(normal.x * p1.x + normal.y * p1.y + normal.z * p1.z);
+	}
+
 	bool checkCollision(const glm::vec3& prevPos, const glm::vec3& nextPos)
 	{
-
+		return distancePlanePoint(normal, d, nextPos) < 0;
 	}
 
-	void getPlane(glm::vec3& normal, float& d)
-	{
-		normal = { 0,2,4 };
-		d = 200.45f;
-	}
+	void getPlane(glm::vec3& normal, float& d) {}
 };
 
 struct SphereCol : Collider
 {
 	bool checkCollision(const glm::vec3& prevPos, const glm::vec3& nextPos)
 	{
+		if (!Sphere::collider)
+			return false;
+
 		float prevD = distance(prevPos, Sphere::position);
 		float nextD = distance(nextPos, Sphere::position);
 
@@ -183,16 +237,44 @@ struct SphereCol : Collider
 
 	void getPlane(glm::vec3& normal, float& d)
 	{
-		
+		glm::vec3 vec = newPosition - previousPosition;
+
+		float a = ((pow(vec.x, 2) + pow(vec.y, 2) + pow(vec.z, 2)));
+		float b = -(2 * (Sphere::position.x*vec.x + Sphere::position.y*vec.y + Sphere::position.z*vec.z - previousPosition.x*vec.x - previousPosition.y*vec.y - previousPosition.z*vec.z));		
+		float c = ((pow(Sphere::position.x, 2) + pow(Sphere::position.y, 2) + pow(Sphere::position.z, 2) - 2 * (Sphere::position.x * previousPosition.x + Sphere::position.y * previousPosition.y 
+			+ Sphere::position.z * previousPosition.z) + pow(previousPosition.x,2) + pow(previousPosition.y, 2) + pow(previousPosition.z, 2) - glm::pow(Sphere::radius,2)));
+
+		float lambda1 = (-b + glm::sqrt(glm::pow(b, 2) - (4 * a * c))) / (2 * a);
+		float lambda2 = (-b - glm::sqrt(glm::pow(b, 2) - (4 * a * c))) / (2 * a);
+
+		glm::vec3 colPoint1 = { previousPosition.x + lambda1 * vec.x, previousPosition.y + lambda1 * vec.y, previousPosition.z + lambda1 * vec.z, };
+		glm::vec3 colPoint2 = { previousPosition.x + lambda2 * vec.x, previousPosition.y + lambda2 * vec.y, previousPosition.z + lambda2 * vec.z, };
+
+		glm::vec3 colPoint = (distance(previousPosition, colPoint1) < distance(previousPosition, colPoint2)) ? colPoint1 : colPoint2;
+
+		normal = normalizeVector(Sphere::position, colPoint);
+
+		d = -(normal.x * colPoint.x + normal.y * colPoint.y + normal.z * colPoint.z);
 	}
 };
 
 struct CapsuleCol : Collider
 {
+	bool checkCollision(const glm::vec3& prevPos, const glm::vec3& nextPos)
+	{
+		if (!Capsule::collider)
+			return false;
 
+		return false;
+	}
+
+	void getPlane(glm::vec3& normal, float& d)
+	{
+
+	}
 };
 
-//Particle System struct
+//PARTICLE SYSTEM
 struct ParticleSystem {
 public:
 	int numparticles;
@@ -201,20 +283,17 @@ public:
 	float* vel;
 
 	float mass;
-
 	bool play;
 
-	ParticleSystem(int num, float r, glm::vec3 initSquarePos, glm::vec3 finalSquarePos) : numparticles(num), radius(r)
+	ParticleSystem(int num, float r, glm::vec3 initSquarePos, glm::vec3 finalSquarePos, glm::vec2 xS, glm::vec2 yS, glm::vec2 zS) : numparticles(num), radius(r)
 	{
-		srand(time(NULL));
-
 		Particles::setupParticles(num, r);
 
 		pos = new float[num * 3];
 		vel = new float[num * 3];
 
 		InitParticlesPosition(initSquarePos, finalSquarePos);
-		InitParticlesVelocity();
+		InitParticlesVelocity(xS, yS, zS);
 
 		mass = 1.0f;
 
@@ -232,7 +311,7 @@ public:
 		Particles::cleanupParticles();
 	}
 
-	void ResetParticleSystem(glm::vec3 initSquarePos, glm::vec3 finalSquarePos)
+	void ResetParticleSystem(glm::vec3 initSquarePos, glm::vec3 finalSquarePos, glm::vec2 xS, glm::vec2 yS, glm::vec2 zS)
 	{
 		Particles::setupParticles(numparticles, radius);
 
@@ -240,7 +319,7 @@ public:
 		vel = new float[numparticles * 3];
 
 		InitParticlesPosition(initSquarePos, finalSquarePos);
-		InitParticlesVelocity();
+		InitParticlesVelocity(xS, yS, zS);
 	}
 
 private:
@@ -259,23 +338,40 @@ private:
 		}
 	}
 
-	void InitParticlesVelocity()
+	void InitParticlesVelocity(glm::vec2 xS, glm::vec2 yS, glm::vec2 zS)
 	{
 		for (int i = 0; i < numparticles; i++)
 			vel[i * 3] = vel[i * 3 + 1] = vel[i * 3 + 2] = 0;
+
+		for (int i = 0; i < numparticles; i++)
+		{
+			vel[i * 3] = RandomFloat(xS.x, xS.y);
+			vel[i * 3 + 1] = RandomFloat(yS.x, yS.y);
+			vel[i * 3 + 2] = RandomFloat(zS.x, zS.y);
+		}
 	}
 };
 
+//ParticleSystem
 ParticleSystem* ps;
 
+//Forces
 std::vector<ForceActuator*> forceActuators;
-
 GravityForce* gravity = new GravityForce;
 PositionalGravityForce* positionalGravityForce = new PositionalGravityForce;
 
+//Colliders
 std::vector<Collider*> colliders;
 SphereCol* sphereCollider = new SphereCol;
+CapsuleCol* capsuleCollider = new CapsuleCol;
+PlaneCol* downPlaneCollider = new PlaneCol({-5, 0,5}, {5,0,5}, {-5,0,-5}, {5,0,-5});
+PlaneCol* rightPlaneCollider = new PlaneCol({ 5,0,-5 }, { 5,0,5 }, { 5,10,-5 }, { 5,10,5 });
+PlaneCol* leftPlaneCollider = new PlaneCol({ -5,10,5 }, { -5,0,5 }, { -5,10,-5 }, { -5,0,-5 });
+PlaneCol* upPlaneCollider = new PlaneCol({ 5,10,5 }, { -5,10,5 }, { 5,10,-5 }, { -5,10,-5 });
+PlaneCol* frontPlaneCollider = new PlaneCol({ -5,0,-5 }, { 5,0,-5 }, { -5,10,-5 }, { 5,10,-5 });
+PlaneCol* backPlaneCollider = new PlaneCol({ -5,10,5 }, { 5,10,5 }, {-5,0,5 }, { 5,0,5 });
 
+//RENDER SETTINGS
 bool renderSphere = false;
 bool renderCapsule = false;
 bool renderParticles = true;
@@ -283,7 +379,6 @@ bool renderMesh = false;
 bool renderFiber = false;
 bool renderCube = false;
 
-//You may have to change this code
 void renderPrims() {
 	Box::drawCube();
 	Axis::drawAxis();
@@ -295,12 +390,12 @@ void renderPrims() {
 
 	if (renderParticles) {
 		int startDrawingFromParticle = 0;
-		int numParticlesToDraw = Particles::maxParticles;
-		Particles::drawParticles(startDrawingFromParticle, numParticlesToDraw);
+		Particles::drawParticles(startDrawingFromParticle, ps->numparticles);
 	}
 
 	if (renderMesh)
 		Mesh::drawMesh();
+
 	if (renderFiber)
 		Fiber::drawFiber();
 
@@ -308,9 +403,10 @@ void renderPrims() {
 		Cube::drawCube();
 }
 
-
+//ImGUI 
 void GUI() {
 	bool show = true;
+
 	ImGui::Begin("Simulation Parameters", &show, 0);
 	{
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
@@ -319,10 +415,9 @@ void GUI() {
 
 		if (ImGui::Button("Reset Simulation"))
 		{
-			ps->ResetParticleSystem(boxCoordinatesInit, boxCoordinatesFinal);
+			ps->ResetParticleSystem(particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
 		}
 	}
-
 	ImGui::End();
 
 	ImGui::Begin("Physics Parameters", &show, 0);
@@ -354,16 +449,7 @@ void GUI() {
 		ImGui::Checkbox("Use gravity", &useGravity);
 		ImGui::DragFloat3("Gravity Acceleration", &gravity->force.x, dragPrecision);
 	}
-	
 	ImGui::End();
-
-	// Example code -- ImGui test window. Most of the sample code is in ImGui::ShowTestWindow()
-	bool show_test_window = false;
-	if(show_test_window) 
-	{
-		ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
-		ImGui::ShowTestWindow(&show_test_window);
-	}
 }
 
 void euler(float dt, ParticleSystem& particles, const std::vector<Collider*>& colliders, const std::vector<ForceActuator*>& forceActs)
@@ -388,9 +474,18 @@ void euler(float dt, ParticleSystem& particles, const std::vector<Collider*>& co
 			for (int j = 0; j < colliders.size(); j++)
 				if (colliders[j]->checkCollision(position, { particles.pos[i * 3], particles.pos[i * 3 + 1] , particles.pos[i * 3 + 2] }))
 				{
-					glm::vec3 newPos; 
-					glm::vec3 newVel;
+					glm::vec3 newPos = { particles.pos[i * 3], particles.pos[i * 3 + 1] , particles.pos[i * 3 + 2] };
+					glm::vec3 newVel = { particles.vel[i * 3], particles.vel[i * 3 + 1] , particles.vel[i * 3 + 2] };
+
 					colliders[j]->computeCollision(position, velocity, newPos, newVel);
+
+					particles.pos[i * 3] = newPos.x;
+					particles.pos[i * 3 + 1] = newPos.y;
+					particles.pos[i * 3 + 2] = newPos.z;
+
+					particles.vel[i * 3] = newVel.x;
+					particles.vel[i * 3 + 1] = newVel.y;
+					particles.vel[i * 3 + 2] = newVel.z;
 				}
 		}
 	}
@@ -398,12 +493,21 @@ void euler(float dt, ParticleSystem& particles, const std::vector<Collider*>& co
 
 void PhysicsInit() 
 {
-	ps = new ParticleSystem(1, 0.05f, boxCoordinatesInit, boxCoordinatesFinal);
+	srand(time(NULL));
+
+	ps = new ParticleSystem(5000, 0.05f, particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
 
 	forceActuators.push_back(gravity);
 	forceActuators.push_back(positionalGravityForce);
 
 	colliders.push_back(sphereCollider);
+	colliders.push_back(capsuleCollider);
+	colliders.push_back(downPlaneCollider);
+	colliders.push_back(rightPlaneCollider);
+	colliders.push_back(leftPlaneCollider);
+	colliders.push_back(upPlaneCollider);
+	colliders.push_back(frontPlaneCollider);
+	colliders.push_back(backPlaneCollider);
 }
 
 void PhysicsUpdate(float dt) 
@@ -415,6 +519,7 @@ void PhysicsUpdate(float dt)
 	ps->UpdateParticles();
 }
 
-void PhysicsCleanup() {
+void PhysicsCleanup() 
+{
 	ps->CleanUpParticles();
 }
