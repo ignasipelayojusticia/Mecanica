@@ -134,7 +134,7 @@ float vectorModule(const glm::vec3& A)
 
 glm::vec3 closestPoint(const glm::vec3& p, const glm::vec3& linePoint, const glm::vec3& lineVector)
 {
-	glm::vec3 vectorLPP = makeVector(p, linePoint);
+	glm::vec3 vectorLPP = makeVector(linePoint, p);
 
 	glm::vec3 proj = (multVector(lineVector, vectorLPP) / glm::pow(vectorModule(lineVector), 2)) * lineVector;
 
@@ -274,12 +274,14 @@ struct SphereCol : Collider
 
 struct CapsuleCol : Collider
 {
+	bool cilindre = false;
+	glm::vec3 pAux;
 	bool checkCollision(const glm::vec3& prevPos, const glm::vec3& nextPos)
 	{
 		if (!Capsule::collider)
 			return false;
-
-		glm::vec3 p = closestPoint(nextPos, Capsule::positionA, makeVector(Capsule::positionB, Capsule::positionA));
+		cilindre = false;
+		glm::vec3 p = closestPoint(nextPos, Capsule::positionA, glm::normalize(makeVector(Capsule::positionB, Capsule::positionA)));
 
 		p.x = glm::clamp(p.x, glm::min(Capsule::positionA.x, Capsule::positionB.x), glm::max(Capsule::positionA.x, Capsule::positionB.x));
 		p.y = glm::clamp(p.y, glm::min(Capsule::positionA.y, Capsule::positionB.y), glm::max(Capsule::positionA.y, Capsule::positionB.y));
@@ -287,7 +289,11 @@ struct CapsuleCol : Collider
 
 		if (distance(nextPos, p) < Capsule::radius)
 		{
-			std::cout << "colisiona" << std::endl;
+			if (p != Capsule::positionA && p != Capsule::positionB) cilindre = true;
+			else pAux = p;
+
+			std::cout << "PrevPos: (" << prevPos.x << ", " << prevPos.y << ", " << prevPos.z << ")" << std::endl;
+			std::cout << "NextPos: (" << nextPos.x << ", " << nextPos.y << ", " << nextPos.z << ")" << std::endl;
 			return true;
 		}
 
@@ -296,7 +302,66 @@ struct CapsuleCol : Collider
 
 	void getPlane(glm::vec3& normal, float& d)
 	{
+		glm::vec3 p1 = previousPosition;
+		glm::vec3 p2 = newPosition;
+		glm::vec3 vr = /*glm::normalize*/(makeVector(p1, p2));
+		std::cout << "Vector P1-P2: (" << vr.x << ", " << vr.y << ", " << vr.z << ")" << std::endl;
+		float a, b, c;
+		float lambda1, lambda2;
 
+		glm::vec3 colPoint1, colPoint2, colPoint;
+
+		if (cilindre)
+		{
+			std::cout << "Parte cilindro" << std::endl;
+			glm::vec3 q = Capsule::positionA;
+			glm::vec3 v = /*glm::normalize*/(makeVector(Capsule::positionA, Capsule::positionB));
+			std::cout << "Vector A-B: (" << v.x << ", " << v.y << ", " << v.z << ")" << std::endl;
+
+			float X1 = (q.x + glm::dot(q, v)*v.x - (glm::dot(p1, v)*v.x) - p1.x);
+			float X2 = ((glm::dot(vr, v)*v.x) - vr.x);
+			std::cout << "X1: " << X1 << " X2: " << X2 << std::endl;
+
+			float Y1 = (q.y + glm::dot(q, v)*v.y - (glm::dot(p1, v)*v.y) - p1.y);
+			float Y2 = ((glm::dot(vr, v)*v.y) - vr.y);
+			std::cout << "Y1: " << Y1 << " Y2: " << Y2 << std::endl;
+
+			float Z1 = (q.z + glm::dot(q, v)*v.z - (glm::dot(p1, v)*v.z) - p1.z);
+			float Z2 = ((glm::dot(vr, v)*v.z) - vr.z);
+			std::cout << "Z1: " << Z1 << " Z2: " << Z2 << std::endl;
+
+
+
+			a = (pow(X2, 2) + pow(Y2, 2) + pow(Z2, 2));
+			b = -2 * (X1*X2 + Y1 * Y2 + Z1 * Z2);
+			c = (pow(X1, 2) + pow(Y1, 2) + pow(Z1, 2) - pow(Capsule::radius, 2));
+
+			
+		}
+		else
+		{
+			std::cout << "Parte esfera" << std::endl;
+			a = ((pow(vr.x, 2) + pow(vr.y, 2) + pow(vr.z, 2)));
+			b = -(2 * (pAux.x*vr.x + pAux.y*vr.y + pAux.z*vr.z - p1.x*vr.x - p1.y*vr.y - p1.z*vr.z));
+			c = ((pow(pAux.x, 2) + pow(pAux.y, 2) + pow(pAux.z, 2) - 2 * (pAux.x * p1.x + pAux.y * p1.y
+				+ pAux.z * p1.z) + pow(p1.x, 2) + pow(p1.y, 2) + pow(p1.z, 2) - glm::pow(Capsule::radius, 2)));
+		}
+		std::cout << "A: " << a << " B: " << b << " C: " << c << std::endl;
+
+		lambda1 = (-b + glm::sqrt(glm::pow(b, 2) - (4 * a * c))) / (2 * a);
+		lambda2 = (-b - glm::sqrt(glm::pow(b, 2) - (4 * a * c))) / (2 * a);
+
+		std::cout << "Lambda1: " << lambda1 << " Lambda2: " << lambda2 << std::endl;
+
+		colPoint1 = { p1.x + lambda1 * vr.x, p1.y + lambda1 * vr.y, p1.z + lambda1 * vr.z, };
+		colPoint2 = { p1.x + lambda2 * vr.x, p1.y + lambda2 * vr.y, p1.z + lambda2 * vr.z, };
+
+		colPoint = (distance(p1, colPoint1) < distance(p1, colPoint2)) ? colPoint1 : colPoint2;
+		if(cilindre) pAux = closestPoint(colPoint, Capsule::positionA, glm::normalize(makeVector(Capsule::positionB, Capsule::positionA)));
+		normal = normalizeVector(pAux, colPoint);
+		d = -(normal.x * colPoint.x + normal.y * colPoint.y + normal.z * colPoint.z);
+		std::cout << "Normal x: " << normal.x << "Normal y: " << normal.y << "Normal z: " << normal.z << std::endl;
+		std::cout << "d: " << d << std::endl;
 	}
 };
 
@@ -521,7 +586,7 @@ void PhysicsInit()
 {
 	srand(time(NULL));
 
-	ps = new ParticleSystem(10, 0.05f, particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
+	ps = new ParticleSystem(100, 0.05f, particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
 
 	forceActuators.push_back(gravity);
 	forceActuators.push_back(positionalGravityForce);
