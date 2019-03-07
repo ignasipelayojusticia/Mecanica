@@ -152,10 +152,14 @@ glm::vec3 closestPoint(const glm::vec3& p, const glm::vec3& linePoint, const glm
 glm::vec3 binaryS(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& q, const glm::vec3& v)
 {
 	glm::vec3 middle = p1 + (makeVector(p1, p2) / 2.0f);
-	if (distanceRectPoint(middle, v, q) < Capsule::radius + 1) {
+	if (distanceRectPoint(middle, v, q) < Capsule::radius + 0.000000005 || distanceRectPoint(middle, v, q) > Capsule::radius - 0.000000005) {
 		return middle;
 	}
-	glm::vec3 p3 = (distanceRectPoint(p1, v, q) < distanceRectPoint(p2, v, q)) ? p1 : p2;
+	bool mayor = distanceRectPoint(middle, v, q) > Capsule::radius;
+	glm::vec3 p3;
+	if (mayor) p3 = (distanceRectPoint(p1, v, q) > Capsule::radius) ? p2 : p1;
+	else p3 = (distanceRectPoint(p1, v, q) < Capsule::radius) ? p2 : p1;
+	
 	binaryS(middle, p3, q, v);
 }
 
@@ -415,9 +419,6 @@ struct CapsuleCol : Collider
 		{
 			if (p != Capsule::positionA && p != Capsule::positionB) cilindre = true;
 			else pAux = p;
-
-			std::cout << "PrevPos: (" << prevPos.x << ", " << prevPos.y << ", " << prevPos.z << ")" << std::endl;
-			std::cout << "NextPos: (" << nextPos.x << ", " << nextPos.y << ", " << nextPos.z << ")" << std::endl;
 			return true;
 		}
 
@@ -428,18 +429,14 @@ struct CapsuleCol : Collider
 	{
 		glm::vec3 p1 = previousPosition;
 		glm::vec3 p2 = newPosition;
-		glm::vec3 vr = /*glm::normalize*/(makeVector(p1, p2));
-		std::cout << "Vector P1-P2: (" << vr.x << ", " << vr.y << ", " << vr.z << ")" << std::endl;
-		float a, b, c;
-		float lambda1, lambda2;
-
 		glm::vec3 colPoint1, colPoint2, colPoint;
 
 		if (cilindre)
 		{
-			std::cout << "Parte cilindro" << std::endl;
+			//Prueba con distancia para punto exacto, error
+			/*std::cout << "Parte cilindro" << std::endl;
 			glm::vec3 q = Capsule::positionA;
-			glm::vec3 v = /*glm::normalize*/(makeVector(Capsule::positionA, Capsule::positionB));
+			glm::vec3 v = (makeVector(Capsule::positionA, Capsule::positionB));
 			std::cout << "Vector A-B: (" << v.x << ", " << v.y << ", " << v.z << ")" << std::endl;
 
 			float X1 = (q.x + glm::dot(q, v)*v.x - (glm::dot(p1, v)*v.x) - p1.x);
@@ -454,17 +451,21 @@ struct CapsuleCol : Collider
 			float Z2 = ((glm::dot(vr, v)*v.z) - vr.z);
 			std::cout << "Z1: " << Z1 << " Z2: " << Z2 << std::endl;
 
-
-
 			a = (pow(X2, 2) + pow(Y2, 2) + pow(Z2, 2));
 			b = -2 * (X1*X2 + Y1 * Y2 + Z1 * Z2);
-			c = (pow(X1, 2) + pow(Y1, 2) + pow(Z1, 2) - pow(Capsule::radius, 2));
+			c = (pow(X1, 2) + pow(Y1, 2) + pow(Z1, 2) - pow(Capsule::radius, 2));*/
 
+			//Con binary
+			glm::vec3 v = (makeVector(Capsule::positionA, Capsule::positionB));
 			colPoint = binaryS(p1,p2,Capsule::positionA,v);
+			pAux = closestPoint(colPoint, Capsule::positionA, glm::normalize(makeVector(Capsule::positionB, Capsule::positionA)));
 		}
 		else
 		{
-			std::cout << "Parte esfera" << std::endl;
+			float a, b, c;
+			float lambda1, lambda2;
+			glm::vec3 vr = (makeVector(p1, p2));
+
 			a = ((pow(vr.x, 2) + pow(vr.y, 2) + pow(vr.z, 2)));
 			b = -(2 * (pAux.x*vr.x + pAux.y*vr.y + pAux.z*vr.z - p1.x*vr.x - p1.y*vr.y - p1.z*vr.z));
 			c = ((pow(pAux.x, 2) + pow(pAux.y, 2) + pow(pAux.z, 2) - 2 * (pAux.x * p1.x + pAux.y * p1.y
@@ -473,21 +474,13 @@ struct CapsuleCol : Collider
 			lambda1 = (-b + glm::sqrt(glm::pow(b, 2) - (4 * a * c))) / (2 * a);
 			lambda2 = (-b - glm::sqrt(glm::pow(b, 2) - (4 * a * c))) / (2 * a);
 
-			std::cout << "Lambda1: " << lambda1 << " Lambda2: " << lambda2 << std::endl;
-
 			colPoint1 = { p1.x + lambda1 * vr.x, p1.y + lambda1 * vr.y, p1.z + lambda1 * vr.z, };
 			colPoint2 = { p1.x + lambda2 * vr.x, p1.y + lambda2 * vr.y, p1.z + lambda2 * vr.z, };
 
 			colPoint = (distance(p1, colPoint1) < distance(p1, colPoint2)) ? colPoint1 : colPoint2;
 		}
-		std::cout << "A: " << a << " B: " << b << " C: " << c << std::endl;
-
-		
-		if(cilindre) pAux = closestPoint(colPoint, Capsule::positionA, glm::normalize(makeVector(Capsule::positionB, Capsule::positionA)));
 		normal = normalizeVector(pAux, colPoint);
 		d = -(normal.x * colPoint.x + normal.y * colPoint.y + normal.z * colPoint.z);
-		std::cout << "Normal x: " << normal.x << "Normal y: " << normal.y << "Normal z: " << normal.z << std::endl;
-		std::cout << "d: " << d << std::endl;
 	}
 };
 
