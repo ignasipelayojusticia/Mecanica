@@ -151,13 +151,19 @@ glm::vec3 closestPoint(const glm::vec3& p, const glm::vec3& linePoint, const glm
 glm::vec3 binaryS(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& q, const glm::vec3& v)
 {
 	glm::vec3 middle = p1 + (makeVector(p1, p2) / 2.0f);
-	if (distanceRectPoint(middle, v, q) < Capsule::radius + 0.000000005 || distanceRectPoint(middle, v, q) > Capsule::radius - 0.000000005) {
+	if (distanceRectPoint(p1, v, q) < Capsule::radius + 0.000000000005 || distanceRectPoint(p1, v, q) > Capsule::radius - 0.000000000005) {
+		return p1;
+	}
+	if (distanceRectPoint(p2, v, q) < Capsule::radius + 0.000000000005 || distanceRectPoint(p2, v, q) > Capsule::radius - 0.000000000005) {
+		return p2;
+	}
+	if (distanceRectPoint(middle, v, q) < Capsule::radius + 0.000000000005 || distanceRectPoint(middle, v, q) > Capsule::radius - 0.000000000005) {
 		return middle;
 	}
 	bool mayor = distanceRectPoint(middle, v, q) > Capsule::radius;
 	glm::vec3 p3;
-	if (mayor) p3 = (distanceRectPoint(p1, v, q) > Capsule::radius) ? p2 : p1;
-	else p3 = (distanceRectPoint(p1, v, q) < Capsule::radius) ? p2 : p1;
+	if (mayor) p3 = (distanceRectPoint(p1, v, q) >= Capsule::radius) ? p2 : p1;
+	else p3 = (distanceRectPoint(p1, v, q) <= Capsule::radius) ? p2 : p1;
 	
 	binaryS(middle, p3, q, v);
 }
@@ -316,17 +322,19 @@ struct Collider
 		glm::vec3 finalPos = newPos - (1 + elasticCoefficient) * (multVector(normal, newPos) + d) * normal;
 		newPos = finalPos;
 
-		glm::vec3 dir = glm::normalize((multVector(normal, oldVel) / glm::pow(vectorModule(normal), 2)) * normal);
-
-		glm::vec3 proj = (multVector(-normal, (gravity->force * ps->mass)) / glm::pow(vectorModule(-normal), 2)) * -normal;
-
-		float Ff = vectorModule(proj)*frictionCoefficient;
-
-		glm::vec3 Fr = dir * Ff;
-
 		glm::vec3 finalVel = newVel - (1 + elasticCoefficient) * (multVector(normal, newVel)) * normal;
-		finalVel += Fr;
+		if (elasticCoefficient != 0)
+		{
+			glm::vec3 dir = glm::normalize((multVector(normal, oldVel) / glm::pow(vectorModule(normal), 2)) * normal);
 
+			glm::vec3 proj = (multVector(-normal, (gravity->force * ps->mass)) / glm::pow(vectorModule(-normal), 2)) * -normal;
+
+			float Ff = vectorModule(proj)*frictionCoefficient;
+
+			glm::vec3 Fr = dir * Ff;
+
+			finalVel += Fr;
+		}
 		newVel = finalVel;
 	}
 };
