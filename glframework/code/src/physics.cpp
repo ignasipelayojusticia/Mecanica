@@ -27,7 +27,6 @@ glm::vec2 zSpeed = { -0.3, 0.3 };
 //GUI 
 float dragPrecision = 0.01f;
 
-
 //NAMESPACES
 namespace Box {
 	void drawCube();
@@ -35,13 +34,10 @@ namespace Box {
 namespace Axis {
 	void drawAxis();
 }
-
 namespace Sphere {
 	extern void updateSphere(glm::vec3 pos, float radius = 1.f);
 	extern void drawSphere();
-
 	bool collider;
-
 	float mass;
 	glm::vec3 position {0.0f, 1.0f, 0.0f};
 	extern float radius;
@@ -77,6 +73,8 @@ namespace Cube {
 	extern void drawCube();
 }
 
+extern void cleanupPrims();
+
 //ADDITIONAL FUNCTIONS
 //Function that generates a random float between two numbers
 float RandomFloat(float a, float b)
@@ -87,6 +85,7 @@ float RandomFloat(float a, float b)
 	return a + r;
 }
 
+//Function that returns the module of a given vector
 float vectorModule(const glm::vec3& A)
 {
 	return (glm::sqrt((glm::pow(A.x, 2)) + (glm::pow(A.y, 2)) + (glm::pow(A.z, 2))));
@@ -106,6 +105,7 @@ float distancePlanePoint(const glm::vec3& n, const float& d, const glm::vec3& p)
 	return up / down;
 }
 
+//Function that returns the distance between a point and a line
 float distanceRectPoint(const glm::vec3& q, const glm::vec3& v, const glm::vec3& p)
 {
 	return vectorModule((q + (glm::dot((q - p), v))*v) - p);
@@ -137,8 +137,7 @@ glm::vec3 crossPorduct(const glm::vec3& A, const glm::vec3& B)
 	return {((B.z * A.y) - (B.y * A.z)), ((A.z * B.x) - (A.x * B.z)), ((A.x * B.y) - (B.x * A.y))};
 }
 
-
-
+//Function that returns the closest point between a point and a line
 glm::vec3 closestPoint(const glm::vec3& p, const glm::vec3& linePoint, const glm::vec3& lineVector)
 {
 	glm::vec3 vectorLPP = makeVector(linePoint, p);
@@ -148,7 +147,7 @@ glm::vec3 closestPoint(const glm::vec3& p, const glm::vec3& linePoint, const glm
 	return linePoint + proj;
 }
 
-
+//Function that does a recursive binary search to find the closest point on the particle direction that is capsule radius distance from capsule
 glm::vec3 binaryS(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& q, const glm::vec3& v)
 {
 	glm::vec3 middle = p1 + (makeVector(p1, p2) / 2.0f);
@@ -162,8 +161,6 @@ glm::vec3 binaryS(const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& q, 
 	
 	binaryS(middle, p3, q, v);
 }
-
-
 
 //PARTICLE SYSTEM
 struct ParticleSystem {
@@ -246,10 +243,6 @@ private:
 //ParticleSystem
 ParticleSystem* ps;
 
-
-
-
-
 //FORCE ACTUATORS
 struct ForceActuator
 {
@@ -295,15 +288,11 @@ glm::vec3 computeForces(float mass, const glm::vec3& position, const std::vector
 	return totalForce;
 }
 
-
-
 //Forces
 std::vector<ForceActuator*> forceActuators;
+
 GravityForce* gravity = new GravityForce;
 PositionalGravityForce* positionalGravityForce = new PositionalGravityForce;
-
-
-
 
 
 //COLLIDERS
@@ -337,7 +326,6 @@ struct Collider
 
 		glm::vec3 finalVel = newVel - (1 + elasticCoefficient) * (multVector(normal, newVel)) * normal;
 		finalVel += Fr;
-		//Tenemos que calcular la fuerza normal contra la superfície que colisiona (si está en plano la fuerza normal == masa * g)
 
 		newVel = finalVel;
 	}
@@ -434,22 +422,17 @@ struct CapsuleCol : Collider
 		if (cilindre)
 		{
 			//Prueba con distancia para punto exacto, error
-			/*std::cout << "Parte cilindro" << std::endl;
-			glm::vec3 q = Capsule::positionA;
+			/*glm::vec3 q = Capsule::positionA;
 			glm::vec3 v = (makeVector(Capsule::positionA, Capsule::positionB));
-			std::cout << "Vector A-B: (" << v.x << ", " << v.y << ", " << v.z << ")" << std::endl;
 
 			float X1 = (q.x + glm::dot(q, v)*v.x - (glm::dot(p1, v)*v.x) - p1.x);
 			float X2 = ((glm::dot(vr, v)*v.x) - vr.x);
-			std::cout << "X1: " << X1 << " X2: " << X2 << std::endl;
 
 			float Y1 = (q.y + glm::dot(q, v)*v.y - (glm::dot(p1, v)*v.y) - p1.y);
 			float Y2 = ((glm::dot(vr, v)*v.y) - vr.y);
-			std::cout << "Y1: " << Y1 << " Y2: " << Y2 << std::endl;
 
 			float Z1 = (q.z + glm::dot(q, v)*v.z - (glm::dot(p1, v)*v.z) - p1.z);
 			float Z2 = ((glm::dot(vr, v)*v.z) - vr.z);
-			std::cout << "Z1: " << Z1 << " Z2: " << Z2 << std::endl;
 
 			a = (pow(X2, 2) + pow(Y2, 2) + pow(Z2, 2));
 			b = -2 * (X1*X2 + Y1 * Y2 + Z1 * Z2);
@@ -484,10 +467,9 @@ struct CapsuleCol : Collider
 	}
 };
 
-
-
 //Colliders
 std::vector<Collider*> colliders;
+
 SphereCol* sphereCollider = new SphereCol;
 CapsuleCol* capsuleCollider = new CapsuleCol;
 PlaneCol* downPlaneCollider = new PlaneCol({ -5, 0,5 }, { 5,0,5 }, { -5,0,-5 }, { 5,0,-5 });
@@ -496,8 +478,6 @@ PlaneCol* leftPlaneCollider = new PlaneCol({ -5,10,5 }, { -5,0,5 }, { -5,10,-5 }
 PlaneCol* upPlaneCollider = new PlaneCol({ 5,10,5 }, { -5,10,5 }, { 5,10,-5 }, { -5,10,-5 });
 PlaneCol* frontPlaneCollider = new PlaneCol({ -5,0,-5 }, { 5,0,-5 }, { -5,10,-5 }, { 5,10,-5 });
 PlaneCol* backPlaneCollider = new PlaneCol({ -5,10,5 }, { 5,10,5 }, { -5,0,5 }, { 5,0,5 });
-
-
 
 //RENDER SETTINGS
 bool renderSphere = false;
@@ -535,12 +515,16 @@ void renderPrims() {
 void GUI() {
 	bool show = true;
 
+	//First GUI Window (Simulation Controls)
 	ImGui::Begin("Simulation Parameters", &show, 0);
 	{
+		//FPS and ms
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
-		ImGui::Checkbox("Play simulation", &ps->play);
+		//Play/Pause checkbox
+		ImGui::Checkbox("Play/Pause simulation", &ps->play);
 
+		//Reset particles button
 		if (ImGui::Button("Reset Simulation"))
 		{
 			ps->ResetParticleSystem(particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
@@ -548,33 +532,45 @@ void GUI() {
 	}
 	ImGui::End();
 
+	//Second GUI Window (Physics parameters) 
 	ImGui::Begin("Physics Parameters", &show, 0);
 	{	
+		//Particles mass
 		ImGui::DragFloat("Particles mass", &ps->mass, dragPrecision, 0.0f, FLT_MAX);
 
 		ImGui::Text("Elasticity & Friction");
+		//Elastic Coefficient
 		ImGui::DragFloat("Elastic Coefficient", &elasticCoefficient, dragPrecision, 0.0f, 1.f);
+		//Friction Coefficient
 		ImGui::DragFloat("Friction Coefficient", &frictionCoefficient, dragPrecision, 0.0f, 1.f);
 
-		ImGui::Spacing();
-
 		ImGui::Text("Colliders");
+		//Show box checkbox
 		ImGui::Checkbox("Show Sphere", &renderSphere);
+		//Use Sphere Collider checkbox
 		ImGui::Checkbox("Use Sphere Collider", &Sphere::collider);
+		//Sphere Mass 
 		ImGui::DragFloat("Sphere Mass", &Sphere::mass, dragPrecision, 0.0f, FLT_MAX);
+		//Sphere Position
 		ImGui::DragFloat3("Sphere Position", &Sphere::position.x, dragPrecision);
+		//Sphere Radius
 		ImGui::DragFloat("Sphere Radius", &Sphere::radius, dragPrecision, 0.0f, FLT_MAX);
 
+		//Show capsule checkbox
 		ImGui::Checkbox("Show Capsule", &renderCapsule);
+		//Use Capsule Collider checkbox
 		ImGui::Checkbox("Use Capsule Collider", &Capsule::collider);
+		//Capsule Position A
 		ImGui::DragFloat3("Capsule Position A", &Capsule::positionA.x, dragPrecision);
+		//Capsule Position B
 		ImGui::DragFloat3("Capsule Position B", &Capsule::positionB.x, dragPrecision);
+		//Capsule radius
 		ImGui::DragFloat("Capsule Radius", &Capsule::radius, dragPrecision, 0.0f, FLT_MAX);
 
-		ImGui::Spacing();
-
 		ImGui::Text("Forces");
+		//Use gravity checkbox
 		ImGui::Checkbox("Use gravity", &useGravity);
+		//Gravity
 		ImGui::DragFloat3("Gravity Acceleration", &gravity->force.x, dragPrecision);
 	}
 	ImGui::End();
@@ -623,7 +619,7 @@ void PhysicsInit()
 {
 	srand(time(NULL));
 
-	ps = new ParticleSystem(100, 0.05f, particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
+	ps = new ParticleSystem(5000, 0.05f, particlesSpawnInit, boxCoordinatesFinal, xSpeed, ySpeed, zSpeed);
 
 	forceActuators.push_back(gravity);
 	forceActuators.push_back(positionalGravityForce);
@@ -650,4 +646,5 @@ void PhysicsUpdate(float dt)
 void PhysicsCleanup() 
 {
 	ps->CleanUpParticles();
+	cleanupPrims();
 }

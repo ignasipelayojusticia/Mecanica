@@ -1,30 +1,14 @@
 ﻿  physics.cpp
-d:\mecanicapractica\glframework\code\src\physics.cpp(221): warning C4838: la conversión de 'T' en 'int' requiere una conversión de restricción
-          with
-          [
-              T=float
-          ]
-d:\mecanicapractica\glframework\code\src\physics.cpp(221): warning C4244: 'inicializando': conversión de 'T' a 'int'; posible pérdida de datos
-          with
-          [
-              T=float
-          ]
-d:\mecanicapractica\glframework\code\src\physics.cpp(222): warning C4838: la conversión de 'T' en 'int' requiere una conversión de restricción
-          with
-          [
-              T=float
-          ]
-d:\mecanicapractica\glframework\code\src\physics.cpp(222): warning C4244: 'inicializando': conversión de 'T' a 'int'; posible pérdida de datos
-          with
-          [
-              T=float
-          ]
-d:\mecanicapractica\glframework\code\src\physics.cpp(226): warning C4244: 'argumento': conversión de 'int' a 'float'; posible pérdida de datos
-d:\mecanicapractica\glframework\code\src\physics.cpp(227): warning C4244: 'argumento': conversión de 'int' a 'float'; posible pérdida de datos
-d:\mecanicapractica\glframework\code\src\physics.cpp(228): warning C4244: 'argumento': conversión de 'int' a 'float'; posible pérdida de datos
-d:\mecanicapractica\glframework\code\src\physics.cpp(280): warning C4244: 'inicializando': conversión de 'double' a 'float'; posible pérdida de datos
-d:\mecanicapractica\glframework\code\src\physics.cpp(624): warning C4244: 'argumento': conversión de 'time_t' a 'unsigned int'; posible pérdida de datos
-d:\mecanicapractica\glframework\code\src\physics.cpp(164): warning C4715: 'binaryS': no todas las rutas de acceso de control devuelven un valor
-  GL_framework.vcxproj -> D:\MecanicaPractica\glframework\x64\Debug\GL_framework.exe
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(218): warning C4838: conversion from 'float' to 'int' requires a narrowing conversion
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(218): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(219): warning C4838: conversion from 'float' to 'int' requires a narrowing conversion
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(219): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(223): warning C4244: 'argument': conversion from 'int' to 'float', possible loss of data
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(224): warning C4244: 'argument': conversion from 'int' to 'float', possible loss of data
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(225): warning C4244: 'argument': conversion from 'int' to 'float', possible loss of data
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(273): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(620): warning C4244: 'argument': conversion from 'time_t' to 'unsigned int', possible loss of data
+e:\universitat\2n dev\treballs\mecànica\git\mecanica\glframework\code\src\physics.cpp(163): warning C4715: 'binaryS': not all control paths return a value
+  GL_framework.vcxproj -> E:\Universitat\2n DEV\Treballs\Mecànica\Git\Mecanica\glframework\x64\Debug\GL_framework.exe
   0 archivo(s) copiado(s)
   0 archivo(s) copiado(s)
