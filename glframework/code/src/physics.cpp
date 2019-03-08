@@ -323,17 +323,10 @@ struct Collider
 		newPos = finalPos;
 
 		glm::vec3 finalVel = newVel - (1 + elasticCoefficient) * (multVector(normal, newVel)) * normal;
-		if (elasticCoefficient != 0)
+		if (frictionCoefficient != 0)
 		{
-			glm::vec3 dir = glm::normalize((multVector(normal, oldVel) / glm::pow(vectorModule(normal), 2)) * normal);
-
-			glm::vec3 proj = (multVector(-normal, (gravity->force * ps->mass)) / glm::pow(vectorModule(-normal), 2)) * -normal;
-
-			float Ff = vectorModule(proj)*frictionCoefficient;
-
-			glm::vec3 Fr = dir * Ff;
-
-			finalVel += Fr;
+			glm::vec3 Fr = frictionCoefficient * (newVel-(glm::dot(normal, newVel)*normal));
+			finalVel -= Fr;
 		}
 		newVel = finalVel;
 	}
