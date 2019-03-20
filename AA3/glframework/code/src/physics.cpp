@@ -18,6 +18,12 @@ glm::vec3 strawCoordinatesFinal = { 5, -1, 5 };
 int numberOfStraws = 100;
 float strawHeight = 5.0f;
 
+//Spring parameters
+glm::vec2 k_stretch{ 1000, 5 };
+glm::vec2 k_bend{ 1000, 5 };
+float particleLinkD = 0.8f;
+
+
 namespace Box {
 	void drawCube();
 }
@@ -30,10 +36,21 @@ namespace Sphere {
 	extern void cleanupSphere();
 	bool collider;
 	float mass;
+	glm::vec3 initPosition{ 0.0f, 1.0f, 0.0f };
 	glm::vec3 position { 0.0f, 1.0f, 0.0f };
 	float speed {0.0f};
 	float turnRadius;
 	extern float radius;
+	void UniformCircularMotion(float dt)
+	{
+		static float alpha = 0;
+		alpha += dt * speed;
+		if (alpha > glm::two_pi<float>())
+			alpha = 0;
+
+		position.x = initPosition.x + turnRadius * glm::sin(alpha);
+		position.z = initPosition.z + turnRadius * glm::cos(alpha);
+	}
 }
 namespace Capsule {
 	extern void updateCapsule(glm::vec3 posA, glm::vec3 posB, float radius = 1.f);
@@ -44,6 +61,9 @@ namespace Particles {
 	extern void setupParticles(int numTotalParticles, float radius);
 	extern void updateParticles(int startIdx, int count, float* array_data);
 	extern void drawParticles(int startIdx, int count);
+	int numPart;
+	float* pos;
+	float* vel;
 }
 namespace Mesh {
 	extern const int numCols;
@@ -71,55 +91,83 @@ float RandomFloat(float a, float b)
 	return a + r;
 }
 
+//Function that returns the module of a given vector
+float vectorModule(const glm::vec3& A)
+{
+	return (glm::sqrt((glm::pow(A.x, 2)) + (glm::pow(A.y, 2)) + (glm::pow(A.z, 2))));
+}
+
+struct Spring
+{
+	int P1, P2;
+	float L0;
+	glm::vec2 k;
+
+	Spring(int p1, int p2, float l0, glm::vec2 _k) : P1(p1), P2(p2), L0(l0), k(_k) {}
+};
+
+glm::vec3 springforce(const glm::vec3& P1, const glm::vec3& V1, const glm::vec3& P2, const glm::vec3& V2, float L0, float ke, float kd){	return -(ke*(vectorModule(P1 - P2) - L0) + kd * (V1 - V2)*((P1 - P2) / (vectorModule(P1 - P2))))*((P1 - P2) / (vectorModule(P1 - P2)));}
+
 struct FiberStraw
 {
 public: 
-	float* pos;
-	float* vel;
+	int firstParticle;
 
 	glm::vec3 initPos;
 
-	FiberStraw(int partPerStraw, float strawHeight)
-	{
-		pos = new float[partPerStraw * 3];
-		vel = new float[partPerStraw * 3];
+	std::vector<Spring> springs;
 
-		InitStraw(partPerStraw, strawHeight);
+	FiberStraw(int firstPart, int partPerStraw, float strawHeight) : firstParticle(firstPart)
+	{
+		InitStraw(strawHeight);
 	}
 
-	void InitStraw(int partPerStraw, float strawHeight)
+	void InitStraw(float strawHeight)
 	{
 		initPos = { RandomFloat(strawCoordinatesInit.x, strawCoordinatesFinal.x), RandomFloat(strawCoordinatesInit.y, strawCoordinatesFinal.y), RandomFloat(strawCoordinatesInit.z, strawCoordinatesFinal.z) };
 
-		pos[0] = initPos.x;
-		pos[1] = initPos.y;
-		pos[2] = initPos.z;
+		Particles::pos[firstParticle * 3] = initPos.x;
+		Particles::pos[firstParticle * 3 + 1] = initPos.y;
+		Particles::pos[firstParticle * 3 + 2] = initPos.z;
 
-		for (int i = 1; i < partPerStraw; i++)
+		int y = 1; 
+		bool si = false;
+		for (int i = firstParticle + 1; i < firstParticle + Fiber::numVerts; i++)
 		{
-			pos[i * 3] = initPos.x;
-			pos[i * 3 + 1] = initPos.y + i * (strawHeight / 5.0f);
-			pos[i * 3 + 2] = initPos.z;
+			Particles::pos[i * 3] = initPos.x;
+			Particles::pos[i * 3 + 1] = initPos.y + y * (strawHeight / Fiber::numVerts);
+			Particles::pos[i * 3 + 2] = initPos.z;
+
+			springs.push_back({ ((i - 1) * 3), i * 3, (strawHeight / Fiber::numVerts), k_stretch });
+			if (si)
+				springs.push_back({ ((i - 2) * 3), i * 3, (strawHeight / Fiber::numVerts) * 2, k_bend });
+			else 
+				si = true;
+			y++;
+		}	
+
+		for (int i = 0; i < springs.size(); i++)
+		{
+			glm::vec3 p1 = { Particles::pos[springs[i].P1], Particles::pos[springs[i].P1 + 1], Particles::pos[springs[i].P1 + 2] };
+			glm::vec3 p2 = { Particles::pos[springs[i].P2], Particles::pos[springs[i].P2 + 1], Particles::pos[springs[i].P2 + 2] };
+			glm::vec3 v1 = { Particles::vel[springs[i].P1], Particles::vel[springs[i].P1 + 1], Particles::vel[springs[i].P1 + 2] };
+			glm::vec3 v2 = { Particles::vel[springs[i].P2], Particles::vel[springs[i].P2 + 1], Particles::vel[springs[i].P2 + 2] };
+			glm::vec3 s = springforce(p1, v1, p2, v2, springs[i].L0, springs[i].k.x, springs[i].k.y);
+
+			std::cout << s.x << "  " << s.y << "  " << s.z << std::endl;
 		}
 	}
 
-	void ResetStraw(int partPerStraw)
+	void ResetStraw(float strawHeight)
 	{
-		pos[0] = initPos.x;
-		pos[1] = initPos.y;
-		pos[2] = initPos.z;
-
-		for (int i = 1; i < partPerStraw; i++)
-		{
-			pos[i * 3] = initPos.x;
-			pos[i * 3 + 1] = initPos.y + i * 1.0f;
-			pos[i * 3 + 2] = initPos.z;
-		}
+		InitStraw(strawHeight);
 	}
 
 	void DrawFiberStraw()
 	{
-		Fiber::updateFiber(pos);
+		float* p = Particles::pos;
+		p += firstParticle * 3;
+		Fiber::updateFiber(p);
 		Fiber::drawFiber();
 	}
 };
@@ -144,10 +192,17 @@ struct GravityForce : ForceActuator
 	glm::vec3 computeForce(float mass, const glm::vec3& position)
 	{
 		if (useForce)
+		{
 			return force;
+		}
 		return { 0,0,0 };
 	}
 };
+
+glm::vec3 computeForces(FiberStraw& fiber, int idx, const std::vector<ForceActuator*>& force_acts)
+{
+	return glm::vec3{0,0,0};
+}
 
 std::vector<ForceActuator*> forceActuators;
 
@@ -180,7 +235,7 @@ std::vector<Collider*> colliders;
 // Boolean variables allow to show/hide the primitives
 bool renderSphere = true;
 bool renderCapsule = false;
-bool renderParticles = false;
+bool renderParticles = true;
 bool renderMesh = false;
 bool renderFiber = true;
 bool renderCube = false;
@@ -213,17 +268,12 @@ void renderPrims() {
 void Reset()
 {
 	for (int i = 0; i < fiberStraws.size(); i++)
-		fiberStraws[i].InitStraw(Fiber::numVerts, strawHeight);
+		fiberStraws[i].InitStraw(strawHeight);
 }
 
 float dragPrecision = 0.01f;
 
 bool play;
-
-//Spring parameters
-glm::vec2 k_stretch {1000, 5};
-glm::vec2 k_bend {1000, 5};
-float particleLinkD = 0.8f;
 
 //Elasticity & friction
 float elasticCoefficient = 0.009f;
@@ -288,8 +338,15 @@ void PhysicsInit()
 {
 	srand(time(NULL));
 
+	Particles::numPart = numberOfStraws * Fiber::numVerts;
+	Particles::setupParticles(Particles::numPart, 0.05f);
+	Particles::pos = new float[Particles::numPart * 3];
+	Particles::vel = new float[Particles::numPart * 3];
+	for (int i = 0; i < Particles::numPart * 3; i++)
+		Particles::vel[i] = 0;
+
 	for (int i = 0; i < numberOfStraws; i++)
-		fiberStraws.push_back({Fiber::numVerts, strawHeight });
+		fiberStraws.push_back({ i * Fiber::numVerts, Fiber::numVerts, strawHeight });
 
 	forceActuators.push_back(gravity);
 	forceActuators.push_back(wind);
@@ -297,6 +354,9 @@ void PhysicsInit()
 
 void PhysicsUpdate(float dt) 
 {
+	Particles::updateParticles(0, Particles::numPart, Particles::pos);
+
+	Sphere::UniformCircularMotion(dt);
 	Sphere::updateSphere(Sphere::position, Sphere::radius);
 }
 
