@@ -19,8 +19,8 @@ int numberOfStraws = 100;
 float strawHeight = 5.0f;
 
 //Spring parameters
-glm::vec2 k_stretch{ 1000, 5 };
-glm::vec2 k_bend{ 1000, 5 };
+glm::vec2 k_stretch{ 10, 5 };
+glm::vec2 k_bend{ 0, 0 };
 float particleLinkD = 0.8f;
 
 
@@ -61,9 +61,6 @@ namespace Particles {
 	extern void setupParticles(int numTotalParticles, float radius);
 	extern void updateParticles(int startIdx, int count, float* array_data);
 	extern void drawParticles(int startIdx, int count);
-	int numPart;
-	float* pos;
-	float* vel;
 }
 namespace Mesh {
 	extern const int numCols;
@@ -99,11 +96,11 @@ float vectorModule(const glm::vec3& A)
 
 struct Spring
 {
+	bool stretch;
 	int P1, P2;
 	float L0;
-	glm::vec2 k;
 
-	Spring(int p1, int p2, float l0, glm::vec2 _k) : P1(p1), P2(p2), L0(l0), k(_k) {}
+	Spring(bool isStretch, int p1, int p2, float l0) : stretch(isStretch), P1(p1), P2(p2), L0(l0) {}
 };
 
 glm::vec3 springforce(const glm::vec3& P1, const glm::vec3& V1, const glm::vec3& P2, const glm::vec3& V2, float L0, float ke, float kd){	return -(ke*(vectorModule(P1 - P2) - L0) + kd * (V1 - V2)*((P1 - P2) / (vectorModule(P1 - P2))))*((P1 - P2) / (vectorModule(P1 - P2)));}
@@ -111,14 +108,19 @@ glm::vec3 springforce(const glm::vec3& P1, const glm::vec3& V1, const glm::vec3&
 struct FiberStraw
 {
 public: 
-	int firstParticle;
-
+	float *pos, *prevPos, *auxPos, *vel;
 	glm::vec3 initPos;
 
 	std::vector<Spring> springs;
 
-	FiberStraw(int firstPart, int partPerStraw, float strawHeight) : firstParticle(firstPart)
+	FiberStraw(float strawHeight)
 	{
+		pos = new float[Fiber::numVerts * 3];
+		prevPos = new float[Fiber::numVerts * 3];
+		auxPos = new float[Fiber::numVerts * 3];
+
+		vel = new float[Fiber::numVerts * 3];
+
 		InitStraw(strawHeight);
 	}
 
@@ -126,35 +128,31 @@ public:
 	{
 		initPos = { RandomFloat(strawCoordinatesInit.x, strawCoordinatesFinal.x), RandomFloat(strawCoordinatesInit.y, strawCoordinatesFinal.y), RandomFloat(strawCoordinatesInit.z, strawCoordinatesFinal.z) };
 
-		Particles::pos[firstParticle * 3] = initPos.x;
-		Particles::pos[firstParticle * 3 + 1] = initPos.y;
-		Particles::pos[firstParticle * 3 + 2] = initPos.z;
+		pos[0] = initPos.x;
+		pos[1] = initPos.y;
+		pos[2] = initPos.z;
 
 		int y = 1; 
-		bool si = false;
-		for (int i = firstParticle + 1; i < firstParticle + Fiber::numVerts; i++)
+		bool bend = false;
+		for (int i = 1; i < Fiber::numVerts; i++)
 		{
-			Particles::pos[i * 3] = initPos.x;
-			Particles::pos[i * 3 + 1] = initPos.y + y * (strawHeight / Fiber::numVerts);
-			Particles::pos[i * 3 + 2] = initPos.z;
+			pos[i * 3] = initPos.x;
+			pos[i * 3 + 1] = initPos.y + y * (strawHeight / Fiber::numVerts);
+			pos[i * 3 + 2] = initPos.z;
 
-			springs.push_back({ ((i - 1) * 3), i * 3, (strawHeight / Fiber::numVerts), k_stretch });
-			if (si)
-				springs.push_back({ ((i - 2) * 3), i * 3, (strawHeight / Fiber::numVerts) * 2, k_bend });
+			springs.push_back({ true, ((i - 1) * 3), i * 3, (strawHeight / Fiber::numVerts)});
+
+			if (bend)
+				springs.push_back({ false, ((i - 2) * 3), i * 3, (strawHeight / Fiber::numVerts) * 2 });
 			else 
-				si = true;
+				bend = true;
 			y++;
 		}	
 
-		for (int i = 0; i < springs.size(); i++)
+		for (int i = 0; i < Fiber::numVerts * 3; i++)
 		{
-			glm::vec3 p1 = { Particles::pos[springs[i].P1], Particles::pos[springs[i].P1 + 1], Particles::pos[springs[i].P1 + 2] };
-			glm::vec3 p2 = { Particles::pos[springs[i].P2], Particles::pos[springs[i].P2 + 1], Particles::pos[springs[i].P2 + 2] };
-			glm::vec3 v1 = { Particles::vel[springs[i].P1], Particles::vel[springs[i].P1 + 1], Particles::vel[springs[i].P1 + 2] };
-			glm::vec3 v2 = { Particles::vel[springs[i].P2], Particles::vel[springs[i].P2 + 1], Particles::vel[springs[i].P2 + 2] };
-			glm::vec3 s = springforce(p1, v1, p2, v2, springs[i].L0, springs[i].k.x, springs[i].k.y);
-
-			std::cout << s.x << "  " << s.y << "  " << s.z << std::endl;
+			prevPos[i] = pos[i];
+			vel[i] = 0;
 		}
 	}
 
@@ -165,12 +163,30 @@ public:
 
 	void DrawFiberStraw()
 	{
-		float* p = Particles::pos;
-		p += firstParticle * 3;
-		Fiber::updateFiber(p);
+		Fiber::updateFiber(pos);
 		Fiber::drawFiber();
 	}
 };
+
+glm::vec3 springForcePos(FiberStraw& fiber, int j)
+{
+	glm::vec3 p1 = { fiber.pos[fiber.springs[j].P1], fiber.pos[fiber.springs[j].P1 + 1],fiber.pos[fiber.springs[j].P1 + 2] };
+	glm::vec3 p2 = { fiber.pos[fiber.springs[j].P2], fiber.pos[fiber.springs[j].P2 + 1], fiber.pos[fiber.springs[j].P2 + 2] };
+	glm::vec3 v1 = { fiber.vel[fiber.springs[j].P1], fiber.vel[fiber.springs[j].P1 + 1], fiber.vel[fiber.springs[j].P1 + 2] };
+	glm::vec3 v2 = { fiber.vel[fiber.springs[j].P2], fiber.vel[fiber.springs[j].P2 + 1], fiber.vel[fiber.springs[j].P2 + 2] };
+
+	return springforce(p1, v1, p2, v2, fiber.springs[j].L0, fiber.springs[j].stretch ? k_stretch.x : k_bend.x, fiber.springs[j].stretch ? k_stretch.y : k_bend.y);
+}
+
+glm::vec3 springForcePrev(FiberStraw& fiber, int j)
+{
+	glm::vec3 p1 = { fiber.prevPos[fiber.springs[j].P1], fiber.prevPos[fiber.springs[j].P1 + 1],fiber.prevPos[fiber.springs[j].P1 + 2] };
+	glm::vec3 p2 = { fiber.pos[fiber.springs[j].P2], fiber.pos[fiber.springs[j].P2 + 1], fiber.pos[fiber.springs[j].P2 + 2] };
+	glm::vec3 v1 = { fiber.vel[fiber.springs[j].P1], fiber.vel[fiber.springs[j].P1 + 1], fiber.vel[fiber.springs[j].P1 + 2] };
+	glm::vec3 v2 = { fiber.vel[fiber.springs[j].P2], fiber.vel[fiber.springs[j].P2 + 1], fiber.vel[fiber.springs[j].P2 + 2] };
+
+	return springforce(p1, v1, p2, v2, fiber.springs[j].L0, fiber.springs[j].stretch ? k_stretch.x : k_bend.x, fiber.springs[j].stretch ? k_stretch.y : k_bend.y);
+}
 
 std::vector<FiberStraw> fiberStraws;
 
@@ -201,7 +217,12 @@ struct GravityForce : ForceActuator
 
 glm::vec3 computeForces(FiberStraw& fiber, int idx, const std::vector<ForceActuator*>& force_acts)
 {
-	return glm::vec3{0,0,0};
+	glm::vec3 force;
+
+	for (int i = 0; i < force_acts.size(); i++)
+		force += force_acts[i]->computeForce(1, {fiber.pos[idx * 3], fiber.pos[idx * 3 + 1], fiber.pos[idx * 3 + 2] });
+
+	return force;
 }
 
 std::vector<ForceActuator*> forceActuators;
@@ -230,6 +251,42 @@ struct SphereCol : Collider
 };
 
 std::vector<Collider*> colliders;
+
+void verlet(float dt, FiberStraw& fiber, const std::vector<Collider*>& colliders, const std::vector<ForceActuator*>& force_acts)
+{
+	glm::vec3 force;
+	for (int i = 1; i < Fiber::numVerts; i++)
+	{
+		force = computeForces(fiber, i, force_acts);
+
+		for (int j = 0; j < fiber.springs.size(); j++)
+		{
+			if (fiber.springs[j].P1 == i * 3)
+			{
+				glm::vec3 s = springForcePos(fiber, j);
+				force += s;
+			}
+			else if (fiber.springs[j].P2 == i * 3)
+			{
+				glm::vec3 s = springForcePrev(fiber, j);
+				force += -s;
+			}
+		}
+
+		glm::vec3 pos = { fiber.pos[i * 3], fiber.pos[i * 3 + 1], fiber.pos[i * 3 + 2] };
+		glm::vec3 prevPos = { fiber.prevPos[i * 3], fiber.prevPos[i * 3 + 1], fiber.prevPos[i * 3 + 2] };
+
+		glm::vec3 nextPos = pos + (pos - prevPos) + (force / 1.0f) * dt * dt;
+
+		fiber.prevPos[i * 3] = pos.x;
+		fiber.prevPos[i * 3 + 1] = pos.y;
+		fiber.prevPos[i * 3 + 2] = pos.z;
+
+		fiber.pos[i * 3] = nextPos.x;
+		fiber.pos[i * 3 + 1] = nextPos.y;
+		fiber.pos[i * 3 + 2] = nextPos.z;
+	}
+}
 
 
 // Boolean variables allow to show/hide the primitives
@@ -338,15 +395,8 @@ void PhysicsInit()
 {
 	srand(time(NULL));
 
-	Particles::numPart = numberOfStraws * Fiber::numVerts;
-	Particles::setupParticles(Particles::numPart, 0.05f);
-	Particles::pos = new float[Particles::numPart * 3];
-	Particles::vel = new float[Particles::numPart * 3];
-	for (int i = 0; i < Particles::numPart * 3; i++)
-		Particles::vel[i] = 0;
-
 	for (int i = 0; i < numberOfStraws; i++)
-		fiberStraws.push_back({ i * Fiber::numVerts, Fiber::numVerts, strawHeight });
+		fiberStraws.push_back({ strawHeight });
 
 	forceActuators.push_back(gravity);
 	forceActuators.push_back(wind);
@@ -354,10 +404,12 @@ void PhysicsInit()
 
 void PhysicsUpdate(float dt) 
 {
-	Particles::updateParticles(0, Particles::numPart, Particles::pos);
-
 	Sphere::UniformCircularMotion(dt);
 	Sphere::updateSphere(Sphere::position, Sphere::radius);
+
+	for (int j = 0; j < 5; j++)
+		for (int i = 0; i < fiberStraws.size(); i++)
+			verlet(dt / 5, fiberStraws[i], colliders, forceActuators);
 }
 
 void PhysicsCleanup() {
