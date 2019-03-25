@@ -88,10 +88,44 @@ float RandomFloat(float a, float b)
 	return a + r;
 }
 
+//Function that returns the distance between a plane and a point
+float distancePlanePoint(const glm::vec3& n, const float& d, const glm::vec3& p)
+{
+	float up = n.x * p.x + n.y * p.y + n.z * p.z + d;
+	float down = glm::sqrt(pow(n.x, 2) + pow(n.y, 2) + pow(n.z, 2));
+	return up / down;
+}
+
 //Function that returns the module of a given vector
 float vectorModule(const glm::vec3& A)
 {
 	return (glm::sqrt((glm::pow(A.x, 2)) + (glm::pow(A.y, 2)) + (glm::pow(A.z, 2))));
+}
+
+//Function that returns the vector between two points
+glm::vec3 makeVector(const glm::vec3& A, const glm::vec3& B)
+{
+	return { (B.x - A.x), (B.y - A.y), (B.z - A.z) };
+}
+
+//Function that returns the crossProduct between two vectors
+glm::vec3 crossPorduct(const glm::vec3& A, const glm::vec3& B)
+{
+	return { ((B.z * A.y) - (B.y * A.z)), ((A.z * B.x) - (A.x * B.z)), ((A.x * B.y) - (B.x * A.y)) };
+}
+
+//Function that returns the normalized vector between two points
+glm::vec3 normalizeVector(const glm::vec3& A, const glm::vec3& B)
+{
+	glm::vec3 v{ (B.x - A.x), (B.y - A.y), (B.z - A.z) };
+	v = glm::normalize(v);
+	return v;
+}
+
+//Function that returns the dotProduct between two vectors
+float multVector(const glm::vec3& A, const glm::vec3& B)
+{
+	return (B.x * A.x) + (B.y * A.y) + (B.z * A.z);
 }
 
 struct Spring
@@ -103,7 +137,10 @@ struct Spring
 	Spring(bool isStretch, int p1, int p2, float l0) : stretch(isStretch), P1(p1), P2(p2), L0(l0) {}
 };
 
-glm::vec3 springforce(const glm::vec3& P1, const glm::vec3& V1, const glm::vec3& P2, const glm::vec3& V2, float L0, float ke, float kd){	return -(ke*(vectorModule(P1 - P2) - L0) + kd * (V1 - V2)*((P1 - P2) / (vectorModule(P1 - P2))))*((P1 - P2) / (vectorModule(P1 - P2)));}
+glm::vec3 springforce(const glm::vec3& P1, const glm::vec3& V1, const glm::vec3& P2, const glm::vec3& V2, float L0, float ke, float kd)
+{
+	return -(ke*(vectorModule(P1 - P2) - L0) + kd * (V1 - V2)*((P1 - P2) / (vectorModule(P1 - P2))))*((P1 - P2) / (vectorModule(P1 - P2)));
+}
 
 struct FiberStraw
 {
@@ -230,27 +267,97 @@ std::vector<ForceActuator*> forceActuators;
 GravityForce* gravity = new GravityForce({ 0,-0.1f,0 });
 GravityForce* wind = new GravityForce({ 0.1f, 0, 0 });
 
+
+//COLLIDERS
 struct Collider
 {
+	glm::vec3 normal;
+	float d;
+
+	glm::vec3 previousPosition;
+	glm::vec3 newPosition;
+
 	virtual bool checkCollision(const glm::vec3& prev_pos, const glm::vec3& next_pos) = 0;
 	virtual void getPlane(glm::vec3& normal, float& d) = 0;
-	void computeCollision(glm::vec3& old_pos, glm::vec3& new_pos)
+	void computeCollision(glm::vec3& old_pos, glm::vec3& new_pos, glm::vec3& new_vel)
 	{
+		previousPosition = old_pos;
+		newPosition = new_pos;
 
+		glm::vec3 finalPos = new_pos - (multVector(normal, new_pos) + d) * normal;
+		new_pos = finalPos;
+
+		getPlane(normal, d);
+
+		glm::vec3 finalVel = new_vel;
 	}
 };
 
 struct PlaneCol : Collider 
 { 
+	glm::vec3 p1, p2, p3, p4;
 
+	PlaneCol(glm::vec3 _p1, glm::vec3 _p2, glm::vec3 _p3, glm::vec3 _p4) : p1(_p1), p2(_p2), p3(_p3), p4(_p4)
+	{
+		glm::vec3 v1 = makeVector(p1, p4);
+		glm::vec3 v2 = makeVector(p2, p3);
+
+		normal = glm::normalize(crossPorduct(v1, v2));
+		d = -(normal.x * p1.x + normal.y * p1.y + normal.z * p1.z);
+	}
+
+	bool checkCollision(const glm::vec3& prev_pos, const glm::vec3& next_pos) {
+		return distancePlanePoint(normal, d, next_pos) < 0;
+	}
+
+	void getPlane(glm::vec3& normal, float& d) {}
 };
 
 struct SphereCol : Collider 
 { 
+	bool checkCollision(const glm::vec3& prev_pos, const glm::vec3& next_pos)
+	{
+		if (!Sphere::collider)
+			return false;
 
+		float prevD = distance(prev_pos, Sphere::position);
+		float nextD = distance(next_pos, Sphere::position);
+
+		return (prevD > nextD && nextD <= Sphere::radius);
+	}
+
+	void getPlane(glm::vec3& normal, float& d)
+	{
+		glm::vec3 vec = newPosition - previousPosition;
+
+		float a = ((pow(vec.x, 2) + pow(vec.y, 2) + pow(vec.z, 2)));
+		float b = -(2 * (Sphere::position.x*vec.x + Sphere::position.y*vec.y + Sphere::position.z*vec.z - previousPosition.x*vec.x - previousPosition.y*vec.y - previousPosition.z*vec.z));
+		float c = ((pow(Sphere::position.x, 2) + pow(Sphere::position.y, 2) + pow(Sphere::position.z, 2) - 2 * (Sphere::position.x * previousPosition.x + Sphere::position.y * previousPosition.y
+			+ Sphere::position.z * previousPosition.z) + pow(previousPosition.x, 2) + pow(previousPosition.y, 2) + pow(previousPosition.z, 2) - glm::pow(Sphere::radius, 2)));
+
+		float lambda1 = (-b + glm::sqrt(glm::pow(b, 2) - (4 * a * c))) / (2 * a);
+		float lambda2 = (-b - glm::sqrt(glm::pow(b, 2) - (4 * a * c))) / (2 * a);
+
+		glm::vec3 colPoint1 = { previousPosition.x + lambda1 * vec.x, previousPosition.y + lambda1 * vec.y, previousPosition.z + lambda1 * vec.z, };
+		glm::vec3 colPoint2 = { previousPosition.x + lambda2 * vec.x, previousPosition.y + lambda2 * vec.y, previousPosition.z + lambda2 * vec.z, };
+
+		glm::vec3 colPoint = (distance(previousPosition, colPoint1) < distance(previousPosition, colPoint2)) ? colPoint1 : colPoint2;
+
+		normal = normalizeVector(Sphere::position, colPoint);
+
+		d = -(normal.x * colPoint.x + normal.y * colPoint.y + normal.z * colPoint.z);
+	}
 };
 
 std::vector<Collider*> colliders;
+
+SphereCol* sphereCollider = new SphereCol;
+PlaneCol* downPlaneCollider = new PlaneCol({ -5, 0,5 }, { 5,0,5 }, { -5,0,-5 }, { 5,0,-5 });
+PlaneCol* rightPlaneCollider = new PlaneCol({ 5,0,-5 }, { 5,0,5 }, { 5,10,-5 }, { 5,10,5 });
+PlaneCol* leftPlaneCollider = new PlaneCol({ -5,10,5 }, { -5,0,5 }, { -5,10,-5 }, { -5,0,-5 });
+PlaneCol* upPlaneCollider = new PlaneCol({ 5,10,5 }, { -5,10,5 }, { 5,10,-5 }, { -5,10,-5 });
+PlaneCol* frontPlaneCollider = new PlaneCol({ -5,0,-5 }, { 5,0,-5 }, { -5,10,-5 }, { 5,10,-5 });
+PlaneCol* backPlaneCollider = new PlaneCol({ -5,10,5 }, { 5,10,5 }, { -5,0,5 }, { 5,0,5 });
 
 void verlet(float dt, FiberStraw& fiber, const std::vector<Collider*>& colliders, const std::vector<ForceActuator*>& force_acts)
 {
@@ -285,8 +392,21 @@ void verlet(float dt, FiberStraw& fiber, const std::vector<Collider*>& colliders
 		fiber.pos[i * 3] = nextPos.x;
 		fiber.pos[i * 3 + 1] = nextPos.y;
 		fiber.pos[i * 3 + 2] = nextPos.z;
+
+		for (int j = 0; j < colliders.size(); j++)
+			if (colliders[j]->checkCollision(pos, nextPos)) {
+				glm::vec3 newPos = { fiber.pos[i * 3], fiber.pos[i * 3 + 1] , fiber.pos[i * 3 + 2] };
+				glm::vec3 newVel = { fiber.vel[i * 3], fiber.vel[i * 3 + 1] , fiber.vel[i * 3 + 2] };
+
+				colliders[j]->computeCollision(pos, newPos, newVel);
+
+				fiber.pos[i * 3] = newPos.x;
+				fiber.pos[i * 3 + 1] = newPos.y;
+				fiber.pos[i * 3 + 2] = newPos.z;
+			}
 	}
 }
+
 
 
 // Boolean variables allow to show/hide the primitives
@@ -400,6 +520,13 @@ void PhysicsInit()
 
 	forceActuators.push_back(gravity);
 	forceActuators.push_back(wind);
+
+	colliders.push_back(downPlaneCollider);
+	colliders.push_back(rightPlaneCollider);
+	colliders.push_back(leftPlaneCollider);
+	colliders.push_back(upPlaneCollider);
+	colliders.push_back(frontPlaneCollider);
+	colliders.push_back(backPlaneCollider);
 }
 
 void PhysicsUpdate(float dt) 
@@ -407,9 +534,8 @@ void PhysicsUpdate(float dt)
 	Sphere::UniformCircularMotion(dt);
 	Sphere::updateSphere(Sphere::position, Sphere::radius);
 
-	for (int j = 0; j < 5; j++)
-		for (int i = 0; i < fiberStraws.size(); i++)
-			verlet(dt / 5, fiberStraws[i], colliders, forceActuators);
+	for (int i = 0; i < fiberStraws.size(); i++)
+		verlet(dt, fiberStraws[i], colliders, forceActuators);
 }
 
 void PhysicsCleanup() {
