@@ -6,6 +6,8 @@
 #include <time.h>
 #include <iostream>
 
+bool play;
+
 //Box coordinates
 glm::vec3 boxCoordinatesInit{ -5, 0, -5 };
 glm::vec3 boxCoordinatesFinal = { 5, 10, 5 };
@@ -15,13 +17,18 @@ glm::vec3 strawCoordinatesInit{ -5, -1, -5 };
 glm::vec3 strawCoordinatesFinal = { 5, -1, 5 };
 
 //Straw settings
-int numberOfStraws = 100;
+int numberOfStraws = 200;
 float strawHeight = 5.0f;
+float mass = 0.5f;
+
+//Elasticity & friction
+float elasticCoefficient = 0.009f;
+float frictionCoefficient = 0.9f;
 
 //Spring parameters
-glm::vec2 k_stretch{ 10, 5 };
-glm::vec2 k_bend{ 0, 0 };
-float particleLinkD = 0.8f;
+glm::vec2 k_stretch{ 1000, 5 };
+glm::vec2 k_bend{ 1000, 5 };
+float particleLinkDistance = 1.0f;
 
 
 namespace Box {
@@ -37,8 +44,8 @@ namespace Sphere {
 	bool collider;
 	float mass;
 	glm::vec3 initPosition{ 0.0f, 1.0f, 0.0f };
-	glm::vec3 position { 0.0f, 1.0f, 0.0f };
-	float speed {0.0f};
+	glm::vec3 position{ 0.0f, 1.0f, 0.0f };
+	float speed{ 0.0f };
 	float turnRadius;
 	extern float radius;
 	void UniformCircularMotion(float dt)
@@ -130,11 +137,11 @@ float multVector(const glm::vec3& A, const glm::vec3& B)
 
 struct Spring
 {
-	bool stretch;
+	glm::vec2 *k;
 	int P1, P2;
-	float L0;
+	int L0;
 
-	Spring(bool isStretch, int p1, int p2, float l0) : stretch(isStretch), P1(p1), P2(p2), L0(l0) {}
+	Spring(glm::vec2 &_k, int p1, int p2, int l0) : k(&_k), P1(p1), P2(p2), L0(l0) {}
 };
 
 glm::vec3 springforce(const glm::vec3& P1, const glm::vec3& V1, const glm::vec3& P2, const glm::vec3& V2, float L0, float ke, float kd)
@@ -144,7 +151,7 @@ glm::vec3 springforce(const glm::vec3& P1, const glm::vec3& V1, const glm::vec3&
 
 struct FiberStraw
 {
-public: 
+public:
 	float *pos, *prevPos, *auxPos, *vel;
 	glm::vec3 initPos;
 
@@ -163,28 +170,30 @@ public:
 
 	void InitStraw(float strawHeight)
 	{
-		initPos = { RandomFloat(strawCoordinatesInit.x, strawCoordinatesFinal.x), RandomFloat(strawCoordinatesInit.y, strawCoordinatesFinal.y), RandomFloat(strawCoordinatesInit.z, strawCoordinatesFinal.z) };
+		initPos = { RandomFloat(strawCoordinatesInit.x, strawCoordinatesFinal.x), - particleLinkDistance *0.9f, RandomFloat(strawCoordinatesInit.z, strawCoordinatesFinal.z) };
 
 		pos[0] = initPos.x;
 		pos[1] = initPos.y;
 		pos[2] = initPos.z;
 
-		int y = 1; 
+		springs.clear();
+
+		int y = 1;
 		bool bend = false;
 		for (int i = 1; i < Fiber::numVerts; i++)
 		{
 			pos[i * 3] = initPos.x;
-			pos[i * 3 + 1] = initPos.y + y * (strawHeight / Fiber::numVerts);
+			pos[i * 3 + 1] = initPos.y + y * particleLinkDistance;
 			pos[i * 3 + 2] = initPos.z;
 
-			springs.push_back({ true, ((i - 1) * 3), i * 3, (strawHeight / Fiber::numVerts)});
+			springs.push_back({ k_stretch, ((i - 1) * 3), i * 3, 1 });
 
 			if (bend)
-				springs.push_back({ false, ((i - 2) * 3), i * 3, (strawHeight / Fiber::numVerts) * 2 });
-			else 
+				springs.push_back({ k_bend, ((i - 2) * 3), i * 3, 2 });
+			else
 				bend = true;
 			y++;
-		}	
+		}
 
 		for (int i = 0; i < Fiber::numVerts * 3; i++)
 		{
@@ -205,24 +214,22 @@ public:
 	}
 };
 
-glm::vec3 springForcePos(FiberStraw& fiber, int j)
+glm::vec3 springForcePos(FiberStraw& fiber, const int& j)
 {
-	glm::vec3 p1 = { fiber.pos[fiber.springs[j].P1], fiber.pos[fiber.springs[j].P1 + 1],fiber.pos[fiber.springs[j].P1 + 2] };
-	glm::vec3 p2 = { fiber.pos[fiber.springs[j].P2], fiber.pos[fiber.springs[j].P2 + 1], fiber.pos[fiber.springs[j].P2 + 2] };
-	glm::vec3 v1 = { fiber.vel[fiber.springs[j].P1], fiber.vel[fiber.springs[j].P1 + 1], fiber.vel[fiber.springs[j].P1 + 2] };
-	glm::vec3 v2 = { fiber.vel[fiber.springs[j].P2], fiber.vel[fiber.springs[j].P2 + 1], fiber.vel[fiber.springs[j].P2 + 2] };
-
-	return springforce(p1, v1, p2, v2, fiber.springs[j].L0, fiber.springs[j].stretch ? k_stretch.x : k_bend.x, fiber.springs[j].stretch ? k_stretch.y : k_bend.y);
+	return springforce({ fiber.pos[fiber.springs[j].P1], fiber.pos[fiber.springs[j].P1 + 1],fiber.pos[fiber.springs[j].P1 + 2] }, 
+		{ fiber.vel[fiber.springs[j].P1], fiber.vel[fiber.springs[j].P1 + 1], fiber.vel[fiber.springs[j].P1 + 2] }, 
+		{ fiber.pos[fiber.springs[j].P2], fiber.pos[fiber.springs[j].P2 + 1], fiber.pos[fiber.springs[j].P2 + 2] }, 
+		{ fiber.vel[fiber.springs[j].P2], fiber.vel[fiber.springs[j].P2 + 1], fiber.vel[fiber.springs[j].P2 + 2] }, 
+		particleLinkDistance * fiber.springs[j].L0, fiber.springs[j].k->x, fiber.springs[j].k->y);
 }
 
-glm::vec3 springForcePrev(FiberStraw& fiber, int j)
+glm::vec3 springForcePrev(FiberStraw& fiber, const int& j)
 {
-	glm::vec3 p1 = { fiber.prevPos[fiber.springs[j].P1], fiber.prevPos[fiber.springs[j].P1 + 1],fiber.prevPos[fiber.springs[j].P1 + 2] };
-	glm::vec3 p2 = { fiber.pos[fiber.springs[j].P2], fiber.pos[fiber.springs[j].P2 + 1], fiber.pos[fiber.springs[j].P2 + 2] };
-	glm::vec3 v1 = { fiber.vel[fiber.springs[j].P1], fiber.vel[fiber.springs[j].P1 + 1], fiber.vel[fiber.springs[j].P1 + 2] };
-	glm::vec3 v2 = { fiber.vel[fiber.springs[j].P2], fiber.vel[fiber.springs[j].P2 + 1], fiber.vel[fiber.springs[j].P2 + 2] };
-
-	return springforce(p1, v1, p2, v2, fiber.springs[j].L0, fiber.springs[j].stretch ? k_stretch.x : k_bend.x, fiber.springs[j].stretch ? k_stretch.y : k_bend.y);
+	return springforce({ fiber.prevPos[fiber.springs[j].P1], fiber.prevPos[fiber.springs[j].P1 + 1],fiber.prevPos[fiber.springs[j].P1 + 2] }, 
+		{ fiber.vel[fiber.springs[j].P1], fiber.vel[fiber.springs[j].P1 + 1], fiber.vel[fiber.springs[j].P1 + 2] }, 
+		{ fiber.pos[fiber.springs[j].P2], fiber.pos[fiber.springs[j].P2 + 1], fiber.pos[fiber.springs[j].P2 + 2] }, 
+		{ fiber.vel[fiber.springs[j].P2], fiber.vel[fiber.springs[j].P2 + 1], fiber.vel[fiber.springs[j].P2 + 2] }, 
+		particleLinkDistance * fiber.springs[j].L0, fiber.springs[j].k->x, fiber.springs[j].k->y);
 }
 
 std::vector<FiberStraw> fiberStraws;
@@ -237,7 +244,7 @@ struct GravityForce : ForceActuator
 	glm::vec3 force;
 	bool useForce;
 
-	GravityForce(const glm::vec3& f) : force(f) 
+	GravityForce(const glm::vec3& f) : force(f)
 	{
 		useForce = true;
 	};
@@ -257,7 +264,7 @@ glm::vec3 computeForces(FiberStraw& fiber, int idx, const std::vector<ForceActua
 	glm::vec3 force;
 
 	for (int i = 0; i < force_acts.size(); i++)
-		force += force_acts[i]->computeForce(1, {fiber.pos[idx * 3], fiber.pos[idx * 3 + 1], fiber.pos[idx * 3 + 2] });
+		force += force_acts[i]->computeForce(1, { fiber.pos[idx * 3], fiber.pos[idx * 3 + 1], fiber.pos[idx * 3 + 2] });
 
 	return force;
 }
@@ -284,17 +291,23 @@ struct Collider
 		previousPosition = old_pos;
 		newPosition = new_pos;
 
-		glm::vec3 finalPos = new_pos - (multVector(normal, new_pos) + d) * normal;
-		new_pos = finalPos;
-
 		getPlane(normal, d);
 
-		glm::vec3 finalVel = new_vel;
+		glm::vec3 finalPos = new_pos - (1 + elasticCoefficient) * (multVector(normal, new_pos) + d) * normal;
+		new_pos = finalPos;
+
+		glm::vec3 finalVel = new_vel - (1 + elasticCoefficient) * (multVector(normal, new_vel)) * normal;
+		if (frictionCoefficient != 0)
+		{
+			glm::vec3 Fr = frictionCoefficient * (new_vel - (glm::dot(normal, new_vel)*normal));
+			finalVel -= Fr;
+		}
+		new_vel = finalVel;
 	}
 };
 
-struct PlaneCol : Collider 
-{ 
+struct PlaneCol : Collider
+{
 	glm::vec3 p1, p2, p3, p4;
 
 	PlaneCol(glm::vec3 _p1, glm::vec3 _p2, glm::vec3 _p3, glm::vec3 _p4) : p1(_p1), p2(_p2), p3(_p3), p4(_p4)
@@ -313,8 +326,8 @@ struct PlaneCol : Collider
 	void getPlane(glm::vec3& normal, float& d) {}
 };
 
-struct SphereCol : Collider 
-{ 
+struct SphereCol : Collider
+{
 	bool checkCollision(const glm::vec3& prev_pos, const glm::vec3& next_pos)
 	{
 		if (!Sphere::collider)
@@ -383,7 +396,7 @@ void verlet(float dt, FiberStraw& fiber, const std::vector<Collider*>& colliders
 		glm::vec3 pos = { fiber.pos[i * 3], fiber.pos[i * 3 + 1], fiber.pos[i * 3 + 2] };
 		glm::vec3 prevPos = { fiber.prevPos[i * 3], fiber.prevPos[i * 3 + 1], fiber.prevPos[i * 3 + 2] };
 
-		glm::vec3 nextPos = pos + (pos - prevPos) + (force / 1.0f) * dt * dt;
+		glm::vec3 nextPos = pos + (pos - prevPos) + (force / mass) * dt * dt;
 
 		fiber.prevPos[i * 3] = pos.x;
 		fiber.prevPos[i * 3 + 1] = pos.y;
@@ -426,7 +439,7 @@ void renderPrims() {
 		Sphere::drawSphere();
 	if (renderCapsule)
 		Capsule::drawCapsule();
-	if (renderParticles) 
+	if (renderParticles)
 	{
 		int startDrawingFromParticle = 0;
 		int numParticlesToDraw = Particles::maxParticles;
@@ -445,16 +458,12 @@ void renderPrims() {
 void Reset()
 {
 	for (int i = 0; i < fiberStraws.size(); i++)
-		fiberStraws[i].InitStraw(strawHeight);
+		fiberStraws[i].ResetStraw(strawHeight);
 }
 
 float dragPrecision = 0.01f;
 
-bool play;
 
-//Elasticity & friction
-float elasticCoefficient = 0.009f;
-float frictionCoefficient = 0.9f;
 
 //Sphere
 float sphereTurnRadius = 1.0f;
@@ -468,16 +477,16 @@ void GUI() {
 	{
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
-		ImGui::Checkbox("Play simulation", &play); //
+		ImGui::Checkbox("Play simulation", &play);
 
-		if (ImGui::Button("Reset")) //
+		if (ImGui::Button("Reset"))
 			Reset();
 
 		if (ImGui::TreeNode("Spring parameters"))
 		{
-			ImGui::DragFloat2("k_strecth", &k_stretch.x, dragPrecision); //
-			ImGui::DragFloat2("k_bend", &k_bend.x, dragPrecision); //
-			ImGui::DragFloat("Particle Link D", &particleLinkD, dragPrecision); //
+			ImGui::DragFloat2("k_strecth", &k_stretch.x, dragPrecision);
+			ImGui::DragFloat2("k_bend", &k_bend.x, dragPrecision);
+			ImGui::DragFloat("Particle Link Distance", &particleLinkDistance, dragPrecision); //
 			ImGui::TreePop();
 		}
 
@@ -493,25 +502,25 @@ void GUI() {
 			ImGui::Checkbox("Show Sphere", &renderSphere);
 			ImGui::Checkbox("Use Sphere Collider", &Sphere::collider);
 			ImGui::DragFloat("Sphere Y", &Sphere::position.y, dragPrecision);
-			ImGui::DragFloat("Sphere Turn Radius", &Sphere::turnRadius, dragPrecision); 
-			ImGui::DragFloat("Sphere Turn Speed", &Sphere::speed, dragPrecision); 
+			ImGui::DragFloat("Sphere Turn Radius", &Sphere::turnRadius, dragPrecision);
+			ImGui::DragFloat("Sphere Turn Speed", &Sphere::speed, dragPrecision);
 			ImGui::DragFloat("Sphere Radius", &Sphere::radius, dragPrecision);
 			ImGui::TreePop();
 		}
 
 		if (ImGui::TreeNode("Forces"))
 		{
-			ImGui::Checkbox("Use gravity", &gravity->useForce); 
-			ImGui::DragFloat3("Gravity Accel", &gravity->force.x, dragPrecision); 
-			ImGui::Checkbox("Use wind", &wind->useForce); 
-			ImGui::DragFloat3("Wind Accel", &wind->force.x, dragPrecision); 
+			ImGui::Checkbox("Use gravity", &gravity->useForce);
+			ImGui::DragFloat3("Gravity Accel", &gravity->force.x, dragPrecision);
+			ImGui::Checkbox("Use wind", &wind->useForce);
+			ImGui::DragFloat3("Wind Accel", &wind->force.x, dragPrecision);
 			ImGui::TreePop();
 		}
 	}
 	ImGui::End();
 }
 
-void PhysicsInit() 
+void PhysicsInit()
 {
 	srand(time(NULL));
 
@@ -527,15 +536,20 @@ void PhysicsInit()
 	colliders.push_back(upPlaneCollider);
 	colliders.push_back(frontPlaneCollider);
 	colliders.push_back(backPlaneCollider);
+	colliders.push_back(sphereCollider);
 }
 
-void PhysicsUpdate(float dt) 
+void PhysicsUpdate(float dt)
 {
 	Sphere::UniformCircularMotion(dt);
 	Sphere::updateSphere(Sphere::position, Sphere::radius);
 
-	for (int i = 0; i < fiberStraws.size(); i++)
-		verlet(dt, fiberStraws[i], colliders, forceActuators);
+	if (!play)
+		return;
+
+	for (size_t j = 0; j < 20; j++)
+		for (int i = 0; i < fiberStraws.size(); i++)
+			verlet(dt / 20, fiberStraws[i], colliders, forceActuators);
 }
 
 void PhysicsCleanup() {
