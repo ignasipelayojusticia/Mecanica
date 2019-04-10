@@ -1,5 +1,4 @@
 ﻿  physics.cpp
-c:\users\ignasi.pelayo\desktop\git\mecanica\aa4\glframework\code\src\physics.cpp(72): warning C4305: 'argument': truncation from 'double' to 'const float'
   GL_framework.vcxproj -> C:\Users\ignasi.pelayo\Desktop\GIT\Mecanica\AA4\glframework\x64\Debug\GL_framework.exe
   0 File(s) copied
   0 File(s) copied

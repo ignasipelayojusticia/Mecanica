@@ -14,6 +14,12 @@ bool pause;
 glm::vec3 gravity{ 0,-5,0 };
 float elasticCoefficient = 0.5f;
 
+//Box coordinates
+glm::vec3 boxCoordinatesInit{ -5, 0, -5 };
+glm::vec3 boxCoordinatesFinal = { 5, 10, 5 };
+
+int numberOfSpheres = 1;
+
 namespace Box {
 	void drawCube();
 }
@@ -81,7 +87,7 @@ glm::vec3 makeVector(const glm::vec3& A, const glm::vec3& B)
 }
 
 //Function that returns the crossProduct between two vectors
-glm::vec3 crossPorduct(const glm::vec3& A, const glm::vec3& B)
+glm::vec3 crossProduct(const glm::vec3& A, const glm::vec3& B)
 {
 	return { ((B.z * A.y) - (B.y * A.z)), ((A.z * B.x) - (A.x * B.z)), ((A.x * B.y) - (B.x * A.y)) };
 }
@@ -95,16 +101,23 @@ glm::vec3 normalizeVector(const glm::vec3& A, const glm::vec3& B)
 }
 
 //Function that returns the dotProduct between two vectors
-float multVector(const glm::vec3& A, const glm::vec3& B)
+float dotProd(const glm::vec3& A, const glm::vec3& B)
 {
 	return (B.x * A.x) + (B.y * A.y) + (B.z * A.z);
 }
 
+void printVec3OnConsole(const glm::vec3& vec)
+{
+	std::cout << vec.x << " " << vec.y << " " << vec.z << std::endl;
+}
 
-struct Collider {
+struct Collider 
+{
 	virtual bool checkCollision(const glm::vec3& next_pos, float radius) = 0;
 };
-struct PlaneCol : Collider {
+
+struct PlaneCol : Collider 
+{
 	glm::vec3 p1, p2, p3, p4;
 	glm::vec3 normal;
 	float d;
@@ -114,28 +127,53 @@ struct PlaneCol : Collider {
 		glm::vec3 v1 = makeVector(p1, p4);
 		glm::vec3 v2 = makeVector(p2, p3);
 
-		normal = glm::normalize(crossPorduct(v1, v2));
+		normal = glm::normalize(crossProduct(v1, v2));
 		d = -(normal.x * p1.x + normal.y * p1.y + normal.z * p1.z);
 	}
 
-	bool checkCollision(const glm::vec3& next_pos, float radius) override {
+	bool checkCollision(const glm::vec3& next_pos, float radius) override
+	{
 		return distancePlanePoint(normal, d, next_pos) <= radius;
 	}
 };
 
-struct RigidSphere :Collider {
+std::vector<PlaneCol*> planeColliders;
+
+PlaneCol* downPlaneCollider = new PlaneCol({ -5, 0,5 }, { 5,0,5 }, { -5,0,-5 }, { 5,0,-5 });
+PlaneCol* rightPlaneCollider = new PlaneCol({ 5,0,-5 }, { 5,0,5 }, { 5,10,-5 }, { 5,10,5 });
+PlaneCol* leftPlaneCollider = new PlaneCol({ -5,10,5 }, { -5,0,5 }, { -5,10,-5 }, { -5,0,-5 });
+PlaneCol* upPlaneCollider = new PlaneCol({ 5,10,5 }, { -5,10,5 }, { 5,10,-5 }, { -5,10,-5 });
+PlaneCol* frontPlaneCollider = new PlaneCol({ -5,0,-5 }, { 5,0,-5 }, { -5,10,-5 }, { 5,10,-5 });
+PlaneCol* backPlaneCollider = new PlaneCol({ -5,10,5 }, { 5,10,5 }, { -5,0,5 }, { 5,0,5 });
+
+
+struct RigidSphere :Collider
+{
 	glm::vec3 x, v, P, L, w;
 	glm::mat3 I, Ibody, R;
 	float radius;
 	float mass;
 
-	RigidSphere(const glm::vec3& initPos, const float& r, const float& m) : x(initPos), radius(r), mass(m)
+	RigidSphere()
 	{
+		initSphere();
+	}
+
+	void initSphere()
+	{
+		radius = RandomFloat(0.1f, 1.5f);
+		mass = RandomFloat(0.5f, 3.0f);
+
+		float init[3] = {boxCoordinatesInit.x + radius, boxCoordinatesInit.y + radius, boxCoordinatesInit.z + radius};
+		float final[3] = { boxCoordinatesFinal.x - radius, boxCoordinatesFinal.y - radius, boxCoordinatesFinal.z - radius };
+		x = { RandomFloat(init[0], final[0]), RandomFloat(init[1], final[1]), RandomFloat(init[2], final[2]) };
+
+
 		v = glm::vec3(RandomFloat(-2.f, 2.f), RandomFloat(-2.f, 2.f), RandomFloat(-2.f, 2.f));
 		P = mass * v;
 		w = glm::vec3(0, 0, 0);
 		R = glm::mat3(1, 0, 0, 0, 1, 0, 0, 0, 1);
-		Ibody = glm::mat3(2 / 5 * mass*radius*radius, 0, 0, 0, 2 / 5 * mass*radius*radius, 0, 0, 0, 2 / 5 * mass*radius*radius);
+		Ibody = glm::mat3(2 / 5 * mass * radius * radius, 0, 0, 0, 2 / 5 * mass * radius * radius, 0, 0, 0, 2 / 5 * mass * radius * radius);
 		I = R * Ibody * R;
 		L = I * w;
 	}
@@ -146,16 +184,13 @@ struct RigidSphere :Collider {
 		Sphere::drawSphere();
 	}
 
-	bool checkCollision(const glm::vec3& next_pos, float r) {
+	bool checkCollision(const glm::vec3& next_pos, float r) 
+	{
 		return vectorModule(next_pos - x) <= r + radius;
 	}
 };
 
-std::vector<RigidSphere> spheres{
-	{{1,1,1}, 2, 3},
-	{{5,2,1}, 1, 3},
-	{{-2,0.5,2}, 0.2, 3}
-};
+std::vector<RigidSphere> spheres;
 
 bool renderSphere = true;
 bool renderCapsule = false;
@@ -164,24 +199,66 @@ bool renderMesh = false;
 bool renderFiber = false;
 bool renderCube = false;
 
-void euler(float dt, RigidSphere& sph) {
+float computeImpulseCorrection(float massA, glm::vec3 ra, glm::mat3 invIa, float massB, glm::vec3 rb, glm::mat3 invIb, float vrel, float epsilon, glm::vec3 normal)
+{
+	float up = -(1 + elasticCoefficient) * vrel;
+	float down = (1 / massA) + (1 / massB) + dotProd(normal, crossProduct(invIa * (crossProduct(ra, normal)), ra)) + dotProd(normal, crossProduct(invIb * crossProduct(rb, normal), rb));
+	return up / down;
+}
+
+void updateColliders(Collider* A, Collider* B)
+{
+
+}
+
+void euler(float dt, RigidSphere& sph) 
+{
 	glm::vec3 totalForces = gravity;	//Total de fuerzas actuando este frame (gravedad siempre ha de estar)
 	glm::vec3 tor = glm::vec3(0, 0, 0); //Torque de la gravedad
 
+	glm::vec3 prevX = sph.x;
+
+	sph.P += dt * sph.mass * totalForces;	//Sin colisión (solo afecta gravedad)
+	sph.v = sph.P / sph.mass;
+	sph.x = sph.x + sph.v * dt;
+
 	//collisiones
-	for (int i = 0; i < spheres.size(); i++) {
-		if (sph.checkCollision(spheres[i].x, spheres[i].radius)) {
-			//todo: calcular nueva fuerza y añadirla a totalForces
-			tor += crossPorduct((/*punto en el que se produce la colision*/ -sph.x), /*fuerza de esta colision*/);
+	for (auto plane : planeColliders)
+	{
+		if (plane->checkCollision(sph.x, sph.radius))
+		{
+			float newDt = dt;
+			while (distancePlanePoint(plane->normal, plane->d, prevX) >= sph.radius + 0.001f)
+			{
+				prevX += sph.v * (dt / 1000.0f);
+				newDt -= dt / 1000.0f;
+			}
+
+			glm::vec3 collisionPoint = sph.x + (- plane->normal * sph.radius);		
+			
+			glm::vec3 collisionForce = gravity * sph.mass;
+			tor += crossProduct((collisionPoint - sph.x), collisionForce);
+			totalForces += collisionForce;
 		}
 	}
 
-	sph.P += dt * sph.mass * totalForces;	//Sin colisión (solo afecta gravedad)
+	for (int i = 0; i < spheres.size(); i++) 
+	{
+		if (spheres[i].x != sph.x)
+		{
+			if (sph.checkCollision(spheres[i].x, spheres[i].radius)) 
+			{
+				std::cout << "Colisiona" << std::endl;
+				//todo: calcular nueva fuerza y añadirla a totalForces
+				//tor += crossPorduct((/*punto en el que se produce la colision*/ -sph.x), /*fuerza de esta colision*/);
+			}
+		}
+	}
+
+	sph.P = 
+
 	sph.L += dt * tor; //no se modifica el momento angular porque tor = 0 ya que la fuerza de la gravedad se aplica en el centro de massas del objeto
-
-	sph.v = sph.P / sph.mass;
-	sph.x = sph.x + sph.v*dt;
-
+	
 	glm::mat3 Ii = sph.R * glm::inverse(sph.Ibody) * glm::transpose(sph.R);
 	sph.w = Ii * sph.L;
 	sph.R = sph.R + dt * (glm::mat3(0, -sph.w.z, sph.w.y, sph.w.z, 0, -sph.w.x, -sph.w.y, sph.w.x, 0)* sph.R);
@@ -216,7 +293,20 @@ void renderPrims() {
 
 void Reset()
 {
-	std::cout << "Reset" << std::endl;
+	for (auto& sphere : spheres)
+		sphere.initSphere();
+}
+
+void ResetCountDown(float dt)
+{
+	static float accumTime = 0.0f;
+	accumTime += dt;
+
+	if (accumTime >= 15.0f)
+	{
+		accumTime = 0.0f;
+		Reset();
+	}
 }
 
 void GUI() {
@@ -241,12 +331,15 @@ void GUI() {
 				std::string mass = "Mass_" + ss.str();
 				std::string radius = "Radius_" + ss.str();
 
+				ImGui::Spacing();
+				ImGui::Spacing();
+				ImGui::Spacing();
+
 				ImGui::DragFloat(mass.c_str(), &spheres[i].mass, dragPrecision, 0.0f, FLT_MAX);
 				ImGui::DragFloat(radius.c_str(), &spheres[i].radius, dragPrecision, 0.0f, FLT_MAX);
 			}
 			ImGui::TreePop();
 		}
-
 	}
 
 	ImGui::End();
@@ -254,12 +347,27 @@ void GUI() {
 
 void PhysicsInit()
 {
+	planeColliders.push_back(downPlaneCollider);
+	planeColliders.push_back(rightPlaneCollider);
+	planeColliders.push_back(leftPlaneCollider);
+	planeColliders.push_back(upPlaneCollider);
+	planeColliders.push_back(frontPlaneCollider);
+	planeColliders.push_back(backPlaneCollider);
 
+	for(int i = 0; i < numberOfSpheres; i++)
+		spheres.push_back(RigidSphere());
+	Reset();
 }
 
 void PhysicsUpdate(float dt)
 {
+	if (pause)
+		return;
 
+	ResetCountDown(dt);
+
+	for (auto& sphere : spheres)
+		euler(dt, sphere);
 }
 
 void PhysicsCleanup()
