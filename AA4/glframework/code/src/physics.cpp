@@ -153,6 +153,7 @@ struct RigidSphere :Collider
 	glm::mat3 I, Ibody, R;
 	float radius;
 	float mass;
+	glm::vec3 F;
 
 	RigidSphere()
 	{
@@ -176,6 +177,7 @@ struct RigidSphere :Collider
 		Ibody = glm::mat3(2 / 5 * mass * radius * radius, 0, 0, 0, 2 / 5 * mass * radius * radius, 0, 0, 0, 2 / 5 * mass * radius * radius);
 		I = R * Ibody * R;
 		L = I * w;
+		F = glm::vec3(0);
 	}
 
 	void drawSphere()
@@ -213,35 +215,50 @@ void updateColliders(Collider* A, Collider* B)
 
 void euler(float dt, RigidSphere& sph) 
 {
-	glm::vec3 totalForces = gravity;	//Total de fuerzas actuando este frame (gravedad siempre ha de estar)
+	glm::vec3 totalForces = sph.F + gravity;
 	glm::vec3 tor = glm::vec3(0, 0, 0); //Torque de la gravedad
 
 	glm::vec3 prevX = sph.x;
 
-	sph.P += dt * sph.mass * totalForces;	//Sin colisión (solo afecta gravedad)
+	sph.P += dt * totalForces;	//Sin colisiÃ³n (solo afecta gravedad)
 	sph.v = sph.P / sph.mass;
 	sph.x = sph.x + sph.v * dt;
+
+	sph.L += dt * tor; //no se modifica el momento angular porque tor = 0 ya que la fuerza de la gravedad se aplica en el centro de massas del objeto
+	glm::mat3 Ii = sph.R * glm::inverse(sph.Ibody) * glm::transpose(sph.R);
+	sph.w = Ii * sph.L;
+	sph.R = sph.R + dt * (glm::mat3(0, -sph.w.z, sph.w.y, sph.w.z, 0, -sph.w.x, -sph.w.y, sph.w.x, 0)* sph.R);
 
 	//collisiones
 	for (auto plane : planeColliders)
 	{
 		if (plane->checkCollision(sph.x, sph.radius))
 		{
+			glm::vec3 J = glm::vec3(0);
+			glm::vec3 F0 = sph.F;
+			glm::vec3 iTor;
+
 			float newDt = dt;
 			while (distancePlanePoint(plane->normal, plane->d, prevX) >= sph.radius + 0.001f)
 			{
 				prevX += sph.v * (dt / 1000.0f);
 				newDt -= dt / 1000.0f;
 			}
-
 			glm::vec3 collisionPoint = sph.x + (- plane->normal * sph.radius);		
 			
-			glm::vec3 collisionForce = gravity * sph.mass;
-			tor += crossProduct((collisionPoint - sph.x), collisionForce);
-			totalForces += collisionForce;
+			glm::vec3 collisionForce = plane->normal * sph.mass;
+			//tor += crossProduct((collisionPoint - sph.x), collisionForce);
+			sph.F += collisionForce;
+			J = sph.F - F0 + gravity;
+			iTor = crossProduct((collisionPoint - sph.x), J);
+			sph.w = glm::transpose(sph.I) * iTor;
+			sph.L = sph.I * sph.w;
+			sph.P = J - sph.P;
+			sph.v = sph.P / sph.mass;
 		}
 	}
 
+	printVec3OnConsole(sph.P);
 	for (int i = 0; i < spheres.size(); i++) 
 	{
 		if (spheres[i].x != sph.x)
@@ -249,19 +266,11 @@ void euler(float dt, RigidSphere& sph)
 			if (sph.checkCollision(spheres[i].x, spheres[i].radius)) 
 			{
 				std::cout << "Colisiona" << std::endl;
-				//todo: calcular nueva fuerza y añadirla a totalForces
+				//todo: calcular nueva fuerza y aÃ±adirla a totalForces
 				//tor += crossPorduct((/*punto en el que se produce la colision*/ -sph.x), /*fuerza de esta colision*/);
 			}
 		}
 	}
-
-	sph.P = 
-
-	sph.L += dt * tor; //no se modifica el momento angular porque tor = 0 ya que la fuerza de la gravedad se aplica en el centro de massas del objeto
-	
-	glm::mat3 Ii = sph.R * glm::inverse(sph.Ibody) * glm::transpose(sph.R);
-	sph.w = Ii * sph.L;
-	sph.R = sph.R + dt * (glm::mat3(0, -sph.w.z, sph.w.y, sph.w.z, 0, -sph.w.x, -sph.w.y, sph.w.x, 0)* sph.R);
 }
 
 void renderPrims() {
@@ -371,6 +380,4 @@ void PhysicsUpdate(float dt)
 }
 
 void PhysicsCleanup()
-{
-
-}
+{}
