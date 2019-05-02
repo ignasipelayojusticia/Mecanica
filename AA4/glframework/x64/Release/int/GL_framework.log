@@ -1,10 +1,10 @@
 ﻿  physics.cpp
-     Creating library C:\Users\ignasi.pelayo\Desktop\GIT\Mecanica\AA4\glframework\x64\Release\GL_framework.lib and object C:\Users\ignasi.pelayo\Desktop\GIT\Mecanica\AA4\glframework\x64\Release\GL_framework.exp
+     Creating library E:\Universitat\2n DEV\Treballs\Mecànica\Git\Mecanica\AA4\glframework\x64\Release\GL_framework.lib and object E:\Universitat\2n DEV\Treballs\Mecànica\Git\Mecanica\AA4\glframework\x64\Release\GL_framework.exp
   Generating code
-  10 of 1206 functions ( 0.8%) were compiled, the rest were copied from previous compilation.
-    1 functions were new in current compilation
+  10 of 1196 functions ( 0.8%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
     4 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
-  GL_framework.vcxproj -> C:\Users\ignasi.pelayo\Desktop\GIT\Mecanica\AA4\glframework\x64\Release\GL_framework.exe
-  0 File(s) copied
-  0 File(s) copied
+  GL_framework.vcxproj -> E:\Universitat\2n DEV\Treballs\Mecànica\Git\Mecanica\AA4\glframework\x64\Release\GL_framework.exe
+  0 archivo(s) copiado(s)
+  0 archivo(s) copiado(s)

@@ -10,15 +10,16 @@
 float dragPrecision = 0.01f;
 
 bool pause;
+bool reseted;
 
-glm::vec3 gravity{ 0,-5,0 };
-float elasticCoefficient = 0.5f;
+glm::vec3 gravity{ 0,-9.82f,0 };
+float elasticCoefficient = 1.0f;
 
 //Box coordinates
 glm::vec3 boxCoordinatesInit{ -5, 0, -5 };
 glm::vec3 boxCoordinatesFinal = { 5, 10, 5 };
 
-int numberOfSpheres = 1000;
+int numberOfSpheres = 3;
 
 namespace Box {
 	void drawCube();
@@ -72,6 +73,12 @@ float distancePlanePoint(const glm::vec3& n, const float& d, const glm::vec3& p)
 	float up = n.x * p.x + n.y * p.y + n.z * p.z + d;
 	float down = glm::sqrt(pow(n.x, 2) + pow(n.y, 2) + pow(n.z, 2));
 	return up / down;
+}
+
+//Function that returns the distance between two points
+float distancePointPoint(const glm::vec3& A, const glm::vec3& B)
+{
+	return glm::sqrt(glm::pow((B.x - A.x), 2) + glm::pow((B.y - A.y), 2) + glm::pow((B.z - A.z), 2));
 }
 
 //Function that returns the module of a given vector
@@ -194,6 +201,7 @@ struct RigidSphere :Collider
 
 std::vector<RigidSphere> spheres;
 
+
 bool renderSphere = true;
 bool renderCapsule = false;
 bool renderParticles = false;
@@ -203,8 +211,10 @@ bool renderCube = false;
 
 float computeImpulseCorrection(float massA, glm::vec3 ra, glm::mat3 invIa, float massB, glm::vec3 rb, glm::mat3 invIb, float vrel, float epsilon, glm::vec3 normal)
 {
-	float up = -(1 + elasticCoefficient) * vrel;
+	float up = -(1 + epsilon) * vrel;
 	float down = (1 / massA) + (1 / massB) + dotProd(normal, crossProduct(invIa * (crossProduct(ra, normal)), ra)) + dotProd(normal, crossProduct(invIb * crossProduct(rb, normal), rb));
+	std::cout << "up: " << up << std::endl << "down: " << down << std::endl;
+	
 	return up / down;
 }
 
@@ -215,21 +225,20 @@ void updateColliders(Collider* A, Collider* B)
 
 void euler(float dt, RigidSphere& sph, int num) 
 {
-	if (num < 5)
+	if (num >= 5)
 	{
+		sph.P += glm::vec3(0, 0, 0);
 
-
+		sph.v = sph.P / sph.mass;
+		sph.x += sph.v * dt;
+	}
+	else
+	{
 		glm::vec3 totalForces = gravity;
-		glm::vec3 tor = glm::vec3(0, 0, 0); //Torque de la gravedad
+		glm::vec3 tor = glm::vec3(0, 0, 0);
 
 		glm::vec3 prevX = sph.x;
-		sph.P += dt * totalForces;	//Sin colisión (solo afecta gravedad)
-
-
-		sph.L += dt * tor; //no se modifica el momento angular porque tor = 0 ya que la fuerza de la gravedad se aplica en el centro de massas del objeto
-		glm::mat3 Ii = sph.R * glm::inverse(sph.Ibody) * glm::transpose(sph.R);
-		sph.w = Ii * sph.L;
-		sph.R += dt * (glm::mat3(0, -sph.w.z, sph.w.y, sph.w.z, 0, -sph.w.x, -sph.w.y, sph.w.x, 0)* sph.R);
+		sph.P += dt * totalForces;
 
 		sph.v = sph.P / sph.mass;
 		sph.x += sph.v * dt;
@@ -257,30 +266,48 @@ void euler(float dt, RigidSphere& sph, int num)
 
 				sph.F = collisionForce;
 				glm::vec3 PP = sph.P * glm::abs(plane->normal);
-				sph.P = sph.P - PP * 2.f;
+				sph.P = sph.P - PP * (1.0f + elasticCoefficient);
 
 				J = sph.F - F0 + gravity;
 				iTor = crossProduct((collisionPoint - sph.x), J);
 				sph.w = glm::transpose(sph.I) * iTor;
 				sph.L = sph.I * sph.w;
 				sph.x = prevX;
+
 				num++;
+				tor += iTor;
+
 				euler(newDt, sph, num);
 			}
 		}
 
-		//for (int i = 0; i < spheres.size(); i++) 
-		//{
-		//	if (spheres[i].x != sph.x)
-		//	{
-		//		if (sph.checkCollision(spheres[i].x, spheres[i].radius)) 
-		//		{
-		//			std::cout << "Colisiona" << std::endl;
-		//			//todo: calcular nueva fuerza y añadirla a totalForces
-		//			//tor += crossPorduct((/*punto en el que se produce la colision*/ -sph.x), /*fuerza de esta colision*/);
-		//		}
-		//	}
-		//}
+		for (int i = 0; i < spheres.size(); i++) 
+		{
+			if (spheres[i].x != sph.x)
+			{
+				if (sph.checkCollision(spheres[i].x, spheres[i].radius)) 
+				{
+					float newDt = dt;
+					while (distancePointPoint(prevX, spheres[i].x) > sph.radius + spheres[i].radius)
+					{
+						prevX += sph.v * (dt / 1000.0f);
+						newDt -= dt / 1000.0f;
+					}
+
+					sph.x = prevX;
+					glm::vec3 collisionPoint = prevX + normalizeVector(prevX, spheres[i].x) * sph.radius;
+
+					glm::mat3 InvA = glm::inverse(sph.I);
+					glm::mat3 InvB = glm::inverse(spheres[i].I);
+
+					float vRel = -elasticCoefficient;
+					glm::vec3 normal = normalizeVector(sph.x, spheres[i].x);
+
+					float impulse = computeImpulseCorrection(sph.mass, makeVector(sph.x, collisionPoint), InvA, spheres[i].mass, makeVector(spheres[i].x, collisionPoint), InvB, elasticCoefficient, vRel, normal);
+					//pause = true;
+				}
+			}
+		}
 	}
 }
 
@@ -315,18 +342,24 @@ void Reset()
 {
 	for (auto& sphere : spheres)
 		sphere.initSphere();
+
+	reseted = true;
 }
 
 void ResetCountDown(float dt)
 {
 	static float accumTime = 0.0f;
-	accumTime += dt;
+	if (reseted)
+	{
+		reseted = false;
+		accumTime = 0.0f;
+	}
+
+	if(!pause)
+		accumTime += dt;
 
 	if (accumTime >= 15.0f)
-	{
-		accumTime = 0.0f;
 		Reset();
-	}
 }
 
 void GUI() {
@@ -339,7 +372,7 @@ void GUI() {
 		if (ImGui::Button("Reset"))
 			Reset();
 
-		ImGui::DragFloat3("Gravity Acceleration", &gravity.x, dragPrecision);
+		ImGui::DragFloat3("Gravity Acceleration", &gravity.x, dragPrecision * 10);
 		ImGui::DragFloat("Elastic Coefficient", &elasticCoefficient, dragPrecision, 0.0f, 1.0f);
 
 		if (ImGui::TreeNode("Spheres"))
@@ -355,8 +388,8 @@ void GUI() {
 				ImGui::Spacing();
 				ImGui::Spacing();
 
-				ImGui::DragFloat(mass.c_str(), &spheres[i].mass, dragPrecision, 0.0f, FLT_MAX);
-				ImGui::DragFloat(radius.c_str(), &spheres[i].radius, dragPrecision, 0.0f, FLT_MAX);
+				ImGui::DragFloat(mass.c_str(), &spheres[i].mass, dragPrecision * 10, 0.0f, FLT_MAX);
+				ImGui::DragFloat(radius.c_str(), &spheres[i].radius, dragPrecision * 10, 0.0f, FLT_MAX);
 			}
 			ImGui::TreePop();
 		}
@@ -376,6 +409,7 @@ void PhysicsInit()
 
 	for(int i = 0; i < numberOfSpheres; i++)
 		spheres.push_back(RigidSphere());
+
 	Reset();
 }
 
@@ -391,4 +425,6 @@ void PhysicsUpdate(float dt)
 }
 
 void PhysicsCleanup()
-{}
+{
+
+}
