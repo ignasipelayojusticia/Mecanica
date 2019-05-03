@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <time.h>
 #include <vector>
 #include <iostream>
 #include <string>
@@ -21,8 +22,8 @@ float elasticCoefficient = 1.0f;
 glm::vec3 boxCoordinatesInit{ -5, 0, -5 };
 glm::vec3 boxCoordinatesFinal = { 5, 10, 5 };
 
-int numberOfSpheres = 1;
-int numberOfCollisionsCheck = 3;
+int numberOfSpheres = 3;
+int numberOfCollisionsCheck = 5;
 
 namespace Box {
 	void drawCube();
@@ -78,12 +79,6 @@ float distancePlanePoint(const glm::vec3& n, const float& d, const glm::vec3& p)
 	return up / down;
 }
 
-//Function that returns the distance between two points
-float distancePointPoint(const glm::vec3& A, const glm::vec3& B)
-{
-	return glm::sqrt(glm::pow((B.x - A.x), 2) + glm::pow((B.y - A.y), 2) + glm::pow((B.z - A.z), 2));
-}
-
 //Function that returns the module of a given vector
 float vectorModule(const glm::vec3& A)
 {
@@ -96,39 +91,12 @@ glm::vec3 makeVector(const glm::vec3& A, const glm::vec3& B)
 	return { (B.x - A.x), (B.y - A.y), (B.z - A.z) };
 }
 
-//Function that returns the crossProduct between two vectors
-glm::vec3 crossProduct(const glm::vec3& A, const glm::vec3& B)
-{
-	return { ((B.z * A.y) - (B.y * A.z)), ((A.z * B.x) - (A.x * B.z)), ((A.x * B.y) - (B.x * A.y)) };
-}
-
 //Function that returns the normalized vector between two points
 glm::vec3 normalizeVector(const glm::vec3& A, const glm::vec3& B)
 {
 	glm::vec3 v{ (B.x - A.x), (B.y - A.y), (B.z - A.z) };
 	v = glm::normalize(v);
 	return v;
-}
-
-//Function that returns the dotProduct between two vectors
-float dotProd(const glm::vec3& A, const glm::vec3& B)
-{
-	return (B.x * A.x) + (B.y * A.y) + (B.z * A.z);
-}
-
-//Function that prints a vec3 on Console. Useful for debug
-void printVec3OnConsole(const glm::vec3& vec)
-{
-	std::cout << vec.x << " " << vec.y << " " << vec.z << std::endl;
-}
-
-//Function that prints a mat3 on Console. Useful for debug
-void printMat3OnConsole(const glm::mat3& mat)
-{
-	const float *pSource = (const float*)glm::value_ptr(mat);
-	for (int i = 0; i < 9; i++)
-		std::cout << pSource[i] << "  ";
-	std::cout << std::endl;
 }
 
 struct Collider 
@@ -147,7 +115,7 @@ struct PlaneCol : Collider
 		glm::vec3 v1 = makeVector(p1, p4);
 		glm::vec3 v2 = makeVector(p2, p3);
 
-		normal = glm::normalize(crossProduct(v1, v2));
+		normal = glm::normalize(glm::cross(v1, v2));
 		d = -(normal.x * p1.x + normal.y * p1.y + normal.z * p1.z);
 	}
 
@@ -177,14 +145,14 @@ struct RigidSphere :Collider
 
 	RigidSphere()
 	{
+		radius = RandomFloat(1.0f, 2.0f);
+		mass = RandomFloat(1.f, 10.f);
+
 		initSphere();
 	}
 
 	void initSphere()
 	{
-		radius = RandomFloat(0.1f, 1.5f);
-		mass = RandomFloat(0.5f, 3.0f);
-
 		float init[3] = {boxCoordinatesInit.x + radius, boxCoordinatesInit.y + radius, boxCoordinatesInit.z + radius};
 		float final[3] = { boxCoordinatesFinal.x - radius, boxCoordinatesFinal.y - radius, boxCoordinatesFinal.z - radius };
 		x = { RandomFloat(init[0], final[0]), RandomFloat(init[1], final[1]), RandomFloat(init[2], final[2]) };
@@ -192,9 +160,10 @@ struct RigidSphere :Collider
 
 		v = glm::vec3(RandomFloat(-2.f, 2.f), RandomFloat(-2.f, 2.f), RandomFloat(-2.f, 2.f));
 		P = mass * v;
-		w = glm::vec3(0, 0, 0);
+		w = glm::vec3(RandomFloat(-2.f, 2.f), RandomFloat(-2.f, 2.f), RandomFloat(-2.f, 2.f));
 		R = glm::mat3(1, 0, 0, 0, 1, 0, 0, 0, 1);
-		Ibody = glm::mat3(2 / 5 * mass * radius * radius, 0, 0, 0, 2 / 5 * mass * radius * radius, 0, 0, 0, 2 / 5 * mass * radius * radius);
+		Ibody = glm::mat3();
+		Ibody *= (2.f / 5.f * mass * glm::pow(radius, 2));
 		I = R * Ibody * R;
 		L = I * w;
 		F = glm::vec3(0);
@@ -214,7 +183,6 @@ struct RigidSphere :Collider
 
 std::vector<RigidSphere> spheres;
 
-
 bool renderSphere = true;
 bool renderCapsule = false;
 bool renderParticles = false;
@@ -224,21 +192,14 @@ bool renderCube = false;
 
 float computeImpulseCorrection(float massA, glm::vec3 ra, glm::mat3 invIa, float massB, glm::vec3 rb, glm::mat3 invIb, float vrel, float epsilon, glm::vec3 normal)
 {
-	float up = -(1 + epsilon) * vrel;
-	float down = (1 / massA) + (1 / massB) + dotProd(normal, crossProduct(invIa * (crossProduct(ra, normal)), ra)) + dotProd(normal, crossProduct(invIb * crossProduct(rb, normal), rb));
-	std::cout << "up: " << up << std::endl << "down: " << down << std::endl;
-	
-	return up / down;
-}
-
-void updateColliders(Collider* A, Collider* B)
-{
-
+	glm::vec3 crossProduct1 = glm::cross(invIa * glm::cross(ra, normal), ra);
+	glm::vec3 crossProduct2 = glm::cross(invIb * glm::cross(rb, normal), rb);
+	return -(1 + epsilon) * vrel / (1 / massA + 1 / massB + glm::dot(normal, crossProduct1) + glm::dot(normal, crossProduct2));
 }
 
 void euler(float dt, RigidSphere& sph, int num) 
 {
-	if (num >= numberOfCollisionsCheck)
+	if (num > numberOfCollisionsCheck)
 	{
 		sph.P += glm::vec3(0, 0, 0);
 
@@ -254,6 +215,7 @@ void euler(float dt, RigidSphere& sph, int num)
 
 		sph.v = sph.P / sph.mass;
 		sph.x += sph.v * dt;
+		sph.R += dt * (sph.w * sph.R);
 
 		//collisiones
 		for (auto plane : planeColliders)
@@ -279,60 +241,67 @@ void euler(float dt, RigidSphere& sph, int num)
 				sph.F = collisionForce;
 				J = sph.F - F0 + gravity;
 
-				iTor = crossProduct((collisionPoint - sph.x), J);
+				iTor = glm::cross((collisionPoint - sph.x), J);
 
 				sph.P = sph.P - PP * (1.0f + elasticCoefficient);
-				sph.L = sph.L + newDt * iTor;
+				sph.L = sph.L + iTor;
 				glm::vec3 rP = collisionPoint - sph.x;
-				sph.I = {sph.mass * (glm::pow(rP.y, 2) + glm::pow(rP.z, 2)), -sph.mass * rP.x * rP.y, -sph.mass * rP.x * rP.z,
-						 -sph.mass * rP.y * rP.x, sph.mass * (glm::pow(rP.x, 2) + glm::pow(rP.z, 2)), - sph.mass * rP.y * rP.z,
-						 -sph.mass * rP.z * rP.x, -sph.mass * rP.z * rP.y, sph.mass * (glm::pow(rP.x, 2) + glm::pow(rP.y, 2))};			
+				sph.I = sph.R * sph.Ibody * glm::transpose(sph.R);	
 				sph.w = glm::inverse(sph.I) * iTor;
-				sph.R += newDt * (sph.w * sph.R);
 				sph.x = prevX;
 
 				num++;
-				euler(newDt, sph, num);
+				euler(dt- newDt, sph, num);
 			}
 		}
 
-		num = 0;
-
 		for (int i = 0; i < spheres.size(); i++) 
 		{
-			break;
 			if (spheres[i].x != sph.x)
 			{
 				if (sph.checkCollision(spheres[i].x, spheres[i].radius)) 
 				{
+					glm::vec3 prevX2 = spheres[i].x;
+
 					float newDt = dt;
-					while (distancePointPoint(prevX, spheres[i].x) > sph.radius + spheres[i].radius)
+					while (glm::distance(prevX, prevX2) > sph.radius + spheres[i].radius)
 					{
 						prevX += sph.v * (dt / 1000.0f);
+						prevX2 += spheres[i].v * (dt / 1000.0f);
 						newDt -= dt / 1000.0f;
 					}
 
-					sph.x = prevX;
 					glm::vec3 collisionPoint = prevX + normalizeVector(prevX, spheres[i].x) * sph.radius;
-
-					glm::mat3 InvA = glm::inverse(sph.I);
-					glm::mat3 InvB = glm::inverse(spheres[i].I);
-
-					float vRel = -elasticCoefficient;
+					
 					glm::vec3 normal = normalizeVector(sph.x, spheres[i].x);
+					glm::vec3 pA = sph.v + glm::cross(sph.w, (collisionPoint - sph.x));
+					glm::vec3 pB = spheres[i].v + glm::cross(spheres[i].w, (collisionPoint - spheres[i].x));
 
-					float impulse = computeImpulseCorrection(sph.mass, makeVector(sph.x, collisionPoint), InvA, spheres[i].mass, makeVector(spheres[i].x, collisionPoint), InvB, elasticCoefficient, vRel, normal);
-					//pause = true;
+					float vRel = glm::dot(normal, (pA - pB));
+					float impulse = computeImpulseCorrection(sph.mass, makeVector(sph.x, collisionPoint), glm::inverse(sph.I), spheres[i].mass, makeVector(spheres[i].x, collisionPoint), glm::inverse(spheres[i].I), elasticCoefficient, vRel, normal);
+					
+					glm::vec3 JA = impulse * normal;
+					glm::vec3 iTorA = glm::cross(makeVector(sph.x, collisionPoint), JA);
+					sph.P = sph.P + JA;
+					sph.L = sph.L + iTorA;
+
+					glm::vec3 JB = -impulse * normal;
+					glm::vec3 iTorB = glm::cross(makeVector(spheres[i].x, collisionPoint), JB);
+					spheres[i].P = spheres[i].P + JB;
+					spheres[i].L = spheres[i].L + iTorB;
+
+					sph.x = prevX;
+					spheres[i].x = prevX2;
 				}
 			}
 		}
 	}
 }
 
-void renderPrims() {
+void renderPrims() 
+{
 	Box::drawCube();
 	Axis::drawAxis();
-
 
 	if (renderSphere)
 		for (auto sphere : spheres)
@@ -358,8 +327,16 @@ void renderPrims() {
 
 void Reset()
 {
+	srand(time(NULL));
+
 	for (auto& sphere : spheres)
 		sphere.initSphere();
+
+	for (int i = 0; i < spheres.size(); i++)
+		for (int j = 0; j < spheres.size(); j++)
+			if (i != j)
+				while (glm::distance(spheres[i].x, spheres[j].x) <= spheres[i].radius + spheres[j].radius)
+					spheres[i].initSphere();
 
 	reseted = true;
 }
@@ -444,5 +421,6 @@ void PhysicsUpdate(float dt)
 
 void PhysicsCleanup()
 {
-
+	for (int i = 0; i < spheres.size(); i++)
+		spheres.pop_back();
 }
