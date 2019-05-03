@@ -1,6 +1,8 @@
 #include <imgui\imgui.h>
 #include <imgui\imgui_impl_sdl_gl3.h>
 #include <glm\gtc\matrix_transform.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <vector>
 #include <iostream>
@@ -19,7 +21,8 @@ float elasticCoefficient = 1.0f;
 glm::vec3 boxCoordinatesInit{ -5, 0, -5 };
 glm::vec3 boxCoordinatesFinal = { 5, 10, 5 };
 
-int numberOfSpheres = 3;
+int numberOfSpheres = 1;
+int numberOfCollisionsCheck = 3;
 
 namespace Box {
 	void drawCube();
@@ -113,9 +116,19 @@ float dotProd(const glm::vec3& A, const glm::vec3& B)
 	return (B.x * A.x) + (B.y * A.y) + (B.z * A.z);
 }
 
+//Function that prints a vec3 on Console. Useful for debug
 void printVec3OnConsole(const glm::vec3& vec)
 {
 	std::cout << vec.x << " " << vec.y << " " << vec.z << std::endl;
+}
+
+//Function that prints a mat3 on Console. Useful for debug
+void printMat3OnConsole(const glm::mat3& mat)
+{
+	const float *pSource = (const float*)glm::value_ptr(mat);
+	for (int i = 0; i < 9; i++)
+		std::cout << pSource[i] << "  ";
+	std::cout << std::endl;
 }
 
 struct Collider 
@@ -225,7 +238,7 @@ void updateColliders(Collider* A, Collider* B)
 
 void euler(float dt, RigidSphere& sph, int num) 
 {
-	if (num >= 5)
+	if (num >= numberOfCollisionsCheck)
 	{
 		sph.P += glm::vec3(0, 0, 0);
 
@@ -235,7 +248,6 @@ void euler(float dt, RigidSphere& sph, int num)
 	else
 	{
 		glm::vec3 totalForces = gravity;
-		glm::vec3 tor = glm::vec3(0, 0, 0);
 
 		glm::vec3 prevX = sph.x;
 		sph.P += dt * totalForces;
@@ -254,35 +266,41 @@ void euler(float dt, RigidSphere& sph, int num)
 					prevX += sph.v * (dt / 1000.0f);
 					newDt -= dt / 1000.0f;
 				}
-				sph.P -= gravity * dt;
+
+				sph.P -= gravity * newDt;
 
 				glm::vec3 collisionPoint = prevX + (-plane->normal * sph.radius);
 				glm::vec3 collisionForce = plane->normal * sph.mass;
-
-
 				glm::vec3 J = glm::vec3(0);
 				glm::vec3 F0 = sph.F;
 				glm::vec3 iTor;
+				glm::vec3 PP = sph.P * glm::abs(plane->normal);
 
 				sph.F = collisionForce;
-				glm::vec3 PP = sph.P * glm::abs(plane->normal);
-				sph.P = sph.P - PP * (1.0f + elasticCoefficient);
-
 				J = sph.F - F0 + gravity;
+
 				iTor = crossProduct((collisionPoint - sph.x), J);
-				sph.w = glm::transpose(sph.I) * iTor;
-				sph.L = sph.I * sph.w;
+
+				sph.P = sph.P - PP * (1.0f + elasticCoefficient);
+				sph.L = sph.L + newDt * iTor;
+				glm::vec3 rP = collisionPoint - sph.x;
+				sph.I = {sph.mass * (glm::pow(rP.y, 2) + glm::pow(rP.z, 2)), -sph.mass * rP.x * rP.y, -sph.mass * rP.x * rP.z,
+						 -sph.mass * rP.y * rP.x, sph.mass * (glm::pow(rP.x, 2) + glm::pow(rP.z, 2)), - sph.mass * rP.y * rP.z,
+						 -sph.mass * rP.z * rP.x, -sph.mass * rP.z * rP.y, sph.mass * (glm::pow(rP.x, 2) + glm::pow(rP.y, 2))};			
+				sph.w = glm::inverse(sph.I) * iTor;
+				sph.R += newDt * (sph.w * sph.R);
 				sph.x = prevX;
 
 				num++;
-				tor += iTor;
-
 				euler(newDt, sph, num);
 			}
 		}
 
+		num = 0;
+
 		for (int i = 0; i < spheres.size(); i++) 
 		{
+			break;
 			if (spheres[i].x != sph.x)
 			{
 				if (sph.checkCollision(spheres[i].x, spheres[i].radius)) 
